@@ -201,7 +201,7 @@ Add the repository to your `pom.xml`:
 <repositories>
   <repository>
     <id>github</id>
-    <url>https://maven.pkg.github.com/promptlm/promptlm-gitea-artifactory</url>
+    <url>https://maven.pkg.github.com/promptLM/promptlm-junit-gitea-artifactory</url>
   </repository>
 </repositories>
 ```
@@ -266,7 +266,7 @@ Prefer squash merges so the Conventional Commit title is preserved in the commit
 
 Package repository:
 ```
-https://maven.pkg.github.com/promptlm/promptlm-gitea-artifactory
+https://maven.pkg.github.com/promptLM/promptlm-junit-gitea-artifactory
 ```
 
 ## License
