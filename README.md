@@ -1,5 +1,5 @@
 # PromptLM Gitea + Artifactory Test Support
-![Release](https://img.shields.io/github/v/release/promptLM/promptlm-gitea-artifactory?sort=semver)
+![Release](https://img.shields.io/github/v/release/promptLM/promptlm-junit-gitea-artifactory?sort=semver)
 
 JUnit 5 test support for spinning up Gitea and Artifactory via Testcontainers. Provides annotations and container helpers to manage containers and common setup for integration tests.
 
@@ -14,7 +14,7 @@ JUnit 5 test support for spinning up Gitea and Artifactory via Testcontainers. P
 <dependency>
   <groupId>dev.promptlm.test</groupId>
   <artifactId>gitea-artifactory</artifactId>
-  <version>1.1.6</version>
+  <version>1.0.0</version>
   <scope>test</scope>
 </dependency>
 ```

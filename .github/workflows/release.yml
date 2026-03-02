@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.2.3)"
+        required: true
+      milestone:
+        description: "Milestone title (defaults to version without v)"
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Resolve release metadata
+        id: release
+        run: |
+          TAG_NAME="${{ inputs.tag }}"
+          if [ -z "$TAG_NAME" ]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG_NAME#v}"
+          if [ "$TAG_NAME" = "$VERSION" ]; then
+            echo "tag must start with 'v' (e.g. v1.2.3)."
+            exit 1
+          fi
+          MILESTONE="${{ inputs.milestone }}"
+          if [ -z "$MILESTONE" ]; then
+            MILESTONE="$VERSION"
+          fi
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "milestone=$MILESTONE" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.release.outputs.tag }}
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      - name: Configure Maven settings
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <servers>
+              <server>
+                <id>central</id>
+                <username>${CENTRAL_USERNAME}</username>
+                <password>${CENTRAL_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+
+      - name: Import GPG key
+        run: |
+          mkdir -p ~/.gnupg
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      - name: Validate pom.xml version matches tag
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          POM_VERSION="$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)"
+          if [ "$POM_VERSION" != "$VERSION" ]; then
+            echo "pom.xml version ($POM_VERSION) does not match tag ($VERSION)."
+            exit 1
+          fi
+
+      - name: Build and test
+        run: ./mvnw -B clean verify
+
+      - name: Deploy to Maven Central (Central Portal)
+        run: ./mvnw -B -Prelease -DskipTests -Dgpg.passphrase="${{ secrets.GPG_PASSPHRASE }}" deploy
+
+      - name: Generate release notes
+        uses: spring-io/github-changelog-generator@c247eb874a8bbc2c7b91ed7227d8eb66eb639d38 # v0.0.13
+        with:
+          milestone: ${{ steps.release.outputs.milestone }}
+          changelog-file: build/release-notes.md
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          body_path: build/release-notes.md
