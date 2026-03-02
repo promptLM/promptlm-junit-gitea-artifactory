@@ -33,6 +33,7 @@ jobs:
 
       - name: Validate release version
         run: |
+          set -euo pipefail
           RELEASE_VERSION="${{ inputs.release_version }}"
           if ! [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "release_version must be MAJOR.MINOR.PATCH (e.g. 1.2.3)."
@@ -40,56 +41,39 @@ jobs:
           fi
           CURRENT_VERSION="$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)"
           CURRENT_BASE="${CURRENT_VERSION%-SNAPSHOT}"
-          export RELEASE_VERSION CURRENT_BASE CURRENT_VERSION
-          python - <<'PY'
-          import os, sys
-          def parse(v): return [int(x) for x in v.split(".")]
-          cur = os.environ["CURRENT_BASE"]
-          cur_version = os.environ["CURRENT_VERSION"]
-          rel = os.environ["RELEASE_VERSION"]
-          if parse(rel) < parse(cur):
-              print(f"release_version {rel} must be greater than current version {cur}.")
-              sys.exit(1)
-          if parse(rel) == parse(cur) and not cur_version.endswith("-SNAPSHOT"):
-              print(f"release_version {rel} must be greater than current version {cur}.")
-              sys.exit(1)
-          PY
+          if [[ "$RELEASE_VERSION" == "$CURRENT_BASE" ]]; then
+            if [[ "$CURRENT_VERSION" != *-SNAPSHOT ]]; then
+              echo "release_version $RELEASE_VERSION must be greater than current version $CURRENT_BASE."
+              exit 1
+            fi
+            exit 0
+          fi
+          LOWEST="$(printf '%s\n%s\n' "$CURRENT_BASE" "$RELEASE_VERSION" | sort -V | head -n1)"
+          if [[ "$LOWEST" != "$CURRENT_BASE" ]]; then
+            echo "release_version $RELEASE_VERSION must be greater than current version $CURRENT_BASE."
+            exit 1
+          fi
 
-      - name: Configure Git user
+      - name: Set release version
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Create release branch and update version
-        run: |
-          RELEASE_VERSION="${{ inputs.release_version }}"
-          BRANCH="release/v${RELEASE_VERSION}"
-          git checkout -b "$BRANCH"
           ./mvnw -B org.codehaus.mojo:versions-maven-plugin:2.16.2:set \
-            -DnewVersion="${RELEASE_VERSION}" \
+            -DnewVersion="${{ inputs.release_version }}" \
             -DgenerateBackupPoms=false
-          git add pom.xml
-          git commit -m "release: v${RELEASE_VERSION}"
-          git push origin "$BRANCH"
-          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-        id: prepare
 
       - name: Create release PR
-        run: |
-          RELEASE_VERSION="${{ inputs.release_version }}"
-          PR_URL="$(gh pr create \
-            --base main \
-            --head "${{ steps.prepare.outputs.branch }}" \
-            --title "release: v${RELEASE_VERSION}" \
-            --body "Release ${RELEASE_VERSION}." \
-            --label release)"
-          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-        id: pr
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "release: v${{ inputs.release_version }}"
+          title: "release: v${{ inputs.release_version }}"
+          body: "Release ${{ inputs.release_version }}."
+          labels: release
+          branch: "release/v${{ inputs.release_version }}"
+          base: main
 
       - name: Enable auto-merge
         if: ${{ inputs.auto_merge == true }}
-        run: gh pr merge --auto --squash "${{ steps.pr.outputs.pr_url }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+          merge-method: squash
