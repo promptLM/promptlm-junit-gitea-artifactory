@@ -93,7 +93,7 @@ jobs:
           printf 'pinentry-mode loopback\n' >> ~/.gnupg/gpg.conf
           printf 'allow-loopback-pinentry\n' >> ~/.gnupg/gpg-agent.conf
           printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --yes --pinentry-mode loopback --import
-          FPR="$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1==\"fpr\" {print $10; exit}')"
+          FPR="$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1=="fpr" {print $10; exit}')"
           if [ -z "$FPR" ]; then
             echo "No secret key imported."
             exit 1
