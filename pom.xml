@@ -4,7 +4,7 @@
 
     <groupId>dev.promptlm.test</groupId>
     <artifactId>junit-gitea-artifactory</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <name>PromptLM Gitea + Artifactory Test Support</name>
     <description>JUnit 5 test support for Gitea and Artifactory containers</description>
     <url>https://github.com/promptLM/promptlm-junit-gitea-artifactory</url>
