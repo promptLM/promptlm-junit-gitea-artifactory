@@ -55,7 +55,7 @@
         <maven.javadoc.plugin.version>3.12.0</maven.javadoc.plugin.version>
         <maven.gpg.plugin.version>3.2.8</maven.gpg.plugin.version>
         <maven.surefire.plugin.version>3.5.5</maven.surefire.plugin.version>
-        <central.publishing.plugin.version>0.9.0</central.publishing.plugin.version>
+        <central.publishing.plugin.version>0.10.0</central.publishing.plugin.version>
     </properties>
 
     <dependencyManagement>
