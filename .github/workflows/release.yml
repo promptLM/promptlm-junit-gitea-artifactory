@@ -72,11 +72,25 @@ jobs:
       - name: Import GPG key
         run: |
           mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
           echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+            echo "GPG_PRIVATE_KEY is empty."
+            exit 1
+          fi
+          if [ -z "${GPG_PASSPHRASE:-}" ]; then
+            echo "GPG_PASSPHRASE is empty."
+            exit 1
+          fi
+          if ! echo "$GPG_PRIVATE_KEY" | head -n1 | grep -q "BEGIN PGP PRIVATE KEY BLOCK"; then
+            echo "GPG_PRIVATE_KEY does not look like an ASCII-armored key."
+            exit 1
+          fi
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --yes --pinentry-mode loopback --import
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Validate pom.xml version matches tag
         run: |
