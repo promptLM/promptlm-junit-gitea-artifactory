@@ -1,0 +1,13 @@
+# Project exclude paths
+/target/
+
+# IDEs/editors
+/.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# OS/files
+.DS_Store
+*.log
