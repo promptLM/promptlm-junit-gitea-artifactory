@@ -1,6 +1,5 @@
 # PromptLM Gitea + Artifactory Test Support
 ![Maven Central](https://img.shields.io/maven-central/v/dev.promptlm.test/junit-gitea-artifactory)
-![Release](https://img.shields.io/github/v/release/promptLM/promptlm-junit-gitea-artifactory?sort=semver)
 ![CI](https://img.shields.io/github/actions/workflow/status/promptLM/promptlm-junit-gitea-artifactory/ci.yml?branch=main)
 ![License](https://img.shields.io/github/license/promptLM/promptlm-junit-gitea-artifactory)
 
