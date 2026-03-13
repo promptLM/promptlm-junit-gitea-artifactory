@@ -45,7 +45,6 @@ public final class GiteaActions {
     void setDiagnosticsCollector(GiteaActionsDiagnosticsCollector diagnosticsCollector) {
         this.diagnosticsCollector = diagnosticsCollector;
     }
-
     public List<ActionRunSummary> listWorkflowRuns(String repoOwner, String repoName) {
         validateRepo(repoOwner, repoName);
         JsonNode response = apiClient.getJson("/repos/" + repoOwner + "/" + repoName + "/actions/runs");

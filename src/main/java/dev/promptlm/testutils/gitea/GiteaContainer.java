@@ -39,10 +39,10 @@ public class GiteaContainer {
 
     private static final Logger logger = LoggerFactory.getLogger(GiteaContainer.class);
     private static final String GITEA_IMAGE = resolveImage("gitea.image", "GITEA_IMAGE",
-            "docker.gitea.com/gitea:1.23.3-rootless");
+            "docker.gitea.com/gitea:1.25.4-rootless");
     private static final int GITEA_PORT = 3000;
     private static final String GITEA_RUNNER_IMAGE = resolveImage("gitea.runner.image", "GITEA_RUNNER_IMAGE",
-            "docker.io/gitea/act_runner:latest");
+            "docker.io/gitea/act_runner:0.2.11");
     private static final String RUNNER_NAME = "gitea-runner";
     private static final String DOCKER_IMAGE_LABEL = resolveImage("gitea.actions.job.image", "GITEA_ACTIONS_JOB_IMAGE",
             "docker://ghcr.io/catthehacker/ubuntu:act-22.04");
