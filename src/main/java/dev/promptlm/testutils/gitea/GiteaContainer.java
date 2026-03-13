@@ -82,6 +82,8 @@ public class GiteaContainer {
     private String adminToken;
     private boolean actionsEnabled;
     private String runnerRegistrationToken;
+    private final GiteaApiClient apiClient;
+    private final GiteaActions actions;
     private final GiteaActionsSupport actionsSupport;
 
     private static String resolveImage(String propertyKey, String envKey, String defaultValue) {
@@ -129,6 +131,8 @@ public class GiteaContainer {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10)).build();
 
+        this.apiClient = new GiteaApiClient(httpClient, logger, this::getApiUrl, () -> adminToken, JSON);
+        this.actions = new GiteaActions(apiClient, logger);
         this.actionsSupport = new GiteaActionsSupport(httpClient, logger, this::getApiUrl, () -> adminToken);
 
         try {
@@ -654,6 +658,13 @@ public class GiteaContainer {
      */
     public String getAdminToken() {
         return adminToken;
+    }
+
+    /**
+     * Access the simplified Actions client for Gitea 1.25.4.
+     */
+    public GiteaActions actions() {
+        return actions;
     }
 
     /**
