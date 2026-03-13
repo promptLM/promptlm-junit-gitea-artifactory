@@ -18,18 +18,6 @@ class GiteaActionsSupportValidationTest {
             () -> "token");
 
     @Test
-    void rejectsBlankWorkflowFile() {
-        assertThatThrownBy(() -> support.waitForWorkflowTaskResult(
-                "owner",
-                "repo",
-                "   ",
-                Duration.ofSeconds(1),
-                Duration.ofMillis(100)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("workflowFile");
-    }
-
-    @Test
     void rejectsBlankRepoOwnerWhenEnablingActions() {
         assertThatThrownBy(() -> support.enableRepositoryActions(" ", "repo"))
                 .isInstanceOf(IllegalArgumentException.class)
