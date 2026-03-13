@@ -24,6 +24,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * Testcontainers wrapper for Gitea that provides easy setup and management for tests.
@@ -82,8 +83,11 @@ public class GiteaContainer {
     private String adminToken;
     private boolean actionsEnabled;
     private String runnerRegistrationToken;
+    private final String traceId = UUID.randomUUID().toString();
     private final GiteaApiClient apiClient;
     private final GiteaActions actions;
+    private final GiteaActionsDiagnosticsCollector diagnosticsCollector;
+    private final GiteaRunnerRegistry runnerRegistry;
     private final GiteaActionsSupport actionsSupport;
 
     private static String resolveImage(String propertyKey, String envKey, String defaultValue) {
@@ -133,6 +137,14 @@ public class GiteaContainer {
 
         this.apiClient = new GiteaApiClient(httpClient, logger, this::getApiUrl, () -> adminToken, JSON);
         this.actions = new GiteaActions(apiClient, logger);
+        this.diagnosticsCollector = new GiteaActionsDiagnosticsCollector(
+                apiClient,
+                actions,
+                () -> traceId,
+                () -> runner == null ? null : runner.getLogs(),
+                () -> container == null ? null : container.getLogs());
+        this.actions.setDiagnosticsCollector(diagnosticsCollector);
+        this.runnerRegistry = new GiteaRunnerRegistry(apiClient, logger);
         this.actionsSupport = new GiteaActionsSupport(httpClient, logger, this::getApiUrl, () -> adminToken);
 
         try {
@@ -422,11 +434,10 @@ public class GiteaContainer {
         logGiteaActionsDatabaseState();
 
         try {
-            boolean rest = isRunnerRegisteredViaRest(RUNNER_NAME);
-            boolean sqlite = isRunnerRegisteredViaDatabase(RUNNER_NAME);
-            logger.warn("Runner registration checks: rest={} sqlite={}", rest, sqlite);
+            boolean registered = runnerRegistry.isRunnerRegistered(RUNNER_NAME);
+            logger.warn("Runner registration check: registered={}", registered);
         } catch (Exception e) {
-            logger.warn("Runner registration checks failed", e);
+            logger.warn("Runner registration check failed", e);
         }
 
         if (runner != null) {
@@ -727,6 +738,13 @@ public class GiteaContainer {
     }
 
     /**
+     * Collect structured diagnostics for Actions observability.
+     */
+    public GiteaActionsDiagnostics collectActionsDiagnostics(String repoOwner, String repoName, Long runId) {
+        return diagnosticsCollector.collect(repoOwner, repoName, runId);
+    }
+
+    /**
      * Clear persisted Actions runs for the repository.
      * <p>
      * Useful to keep acceptance runs deterministic by ensuring only freshly-triggered
@@ -736,37 +754,6 @@ public class GiteaContainer {
         return actionsSupport.clearActionsRuns(repoOwner, repoName);
     }
 
-    public WorkflowTaskResult waitForWorkflowTaskResult(String repoOwner,
-                                                        String repoName,
-                                                        String workflowFile,
-                                                        Duration timeout,
-                                                        Duration pollInterval) {
-        try {
-            var result = actionsSupport.waitForWorkflowTaskResult(repoOwner, repoName, workflowFile, timeout, pollInterval);
-            return new WorkflowTaskResult(
-                    result.id(),
-                    result.state(),
-                    result.success(),
-                    result.workflow(),
-                    result.job(),
-                    result.ref(),
-                    result.sha(),
-                    result.summary());
-        } catch (RuntimeException e) {
-            logRunnerDiagnostics("workflow task wait failed for '" + workflowFile + "': " + e.getMessage());
-            throw e;
-        }
-    }
-
-    public record WorkflowTaskResult(long id,
-                                     String state,
-                                     boolean success,
-                                     String workflow,
-                                     String job,
-                                     String ref,
-                                     String sha,
-                                     String summary) {
-    }
 
     /**
      * Create a repository via the Gitea API
@@ -878,62 +865,11 @@ public class GiteaContainer {
                     .pollInterval(Duration.ofSeconds(2))
                     .atMost(Duration.ofMinutes(1))
                     .ignoreExceptions()
-                    .until(() -> isRunnerRegisteredViaRest(RUNNER_NAME) || isRunnerRegisteredViaDatabase(RUNNER_NAME));
+                    .until(() -> runnerRegistry.isRunnerRegistered(RUNNER_NAME));
         } catch (org.awaitility.core.ConditionTimeoutException e) {
             logger.warn("Actions runner '{}' was not detected after waiting. Workflows may remain queued.", RUNNER_NAME);
             logRunnerDiagnostics("runner registration timeout");
         }
-    }
-
-    private boolean isRunnerRegisteredViaRest(String runnerName) {
-        String[] endpoints = {
-                getApiUrl() + "/actions/runners",
-                getApiUrl() + "/admin/runners",
-                getApiUrl() + "/admin/actions/runners"
-        };
-
-        for (String endpoint : endpoints) {
-            try {
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(endpoint))
-                        .header("Authorization", "token " + adminToken)
-                        .header("Accept", "application/json")
-                        .GET()
-                        .build();
-
-                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-                if (response.statusCode() == 200 && response.body().contains(runnerName)) {
-                    logger.info("Actions runner '{}' registered successfully via {}", runnerName, endpoint);
-                    return true;
-                }
-
-                if (response.statusCode() != 200) {
-                    logger.debug("Runner poll via {} returned {} body: {}", endpoint, response.statusCode(), response.body());
-                }
-            } catch (Exception e) {
-                logger.debug("Runner poll via {} failed", endpoint, e);
-            }
-        }
-        return false;
-    }
-
-    private boolean isRunnerRegisteredViaDatabase(String runnerName) {
-        try {
-            var result = container.execInContainer("sqlite3", "/var/lib/gitea/data/gitea.db",
-                    "SELECT COUNT(1) FROM action_runner WHERE name='" + runnerName + "' AND online=1;");
-            String output = result.getStdout().trim();
-            if (!output.isBlank() && !"0".equals(output)) {
-                logger.info("Actions runner '{}' reported online via sqlite check", runnerName);
-                return true;
-            }
-            if (!result.getStderr().isBlank()) {
-                logger.debug("Runner sqlite check stderr: {}", result.getStderr().trim());
-            }
-        } catch (Exception e) {
-            logger.debug("Runner sqlite check failed", e);
-        }
-        return false;
     }
 
     private void waitForGiteaReady() {

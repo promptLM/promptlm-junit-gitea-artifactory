@@ -47,6 +47,19 @@ class IntegrationTest {
 }
 ```
 
+## Gitea Actions support
+
+`GiteaContainer` exposes a lightweight Actions facade for inspecting workflow runs and logs:
+
+```java
+GiteaActions actions = gitea.actions();
+var report = actions.waitForWorkflowRunBySha("owner", "repo", "commitSha",
+        Duration.ofMinutes(2), Duration.ofSeconds(2));
+```
+
+When Actions workflows time out, the container can collect diagnostics (runs, jobs, logs)
+to aid troubleshooting.
+
 ## License
 
 MIT. See `LICENSE`.
