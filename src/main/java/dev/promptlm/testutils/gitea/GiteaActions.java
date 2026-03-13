@@ -35,15 +35,10 @@ public final class GiteaActions {
 
     private final GiteaApiClient apiClient;
     private final Logger logger;
-    private GiteaActionsDiagnosticsCollector diagnosticsCollector;
 
     GiteaActions(GiteaApiClient apiClient, Logger logger) {
         this.apiClient = Objects.requireNonNull(apiClient, "apiClient");
         this.logger = Objects.requireNonNull(logger, "logger");
-    }
-
-    void setDiagnosticsCollector(GiteaActionsDiagnosticsCollector diagnosticsCollector) {
-        this.diagnosticsCollector = diagnosticsCollector;
     }
 
     public List<ActionRunSummary> listWorkflowRuns(String repoOwner, String repoName) {
@@ -106,21 +101,8 @@ public final class GiteaActions {
                     .ignoreExceptions()
                     .until(() -> findTerminalRun(repoOwner, repoName, normalizedSha), Objects::nonNull);
         } catch (ConditionTimeoutException e) {
-            GiteaActionsDiagnostics diagnostics = collectDiagnostics(repoOwner, repoName);
             throw new GiteaWorkflowException("Timed out waiting for workflow run for " + repoOwner + "/" + repoName
-                    + " sha=" + normalizedSha, e, diagnostics);
-        }
-    }
-
-    private GiteaActionsDiagnostics collectDiagnostics(String repoOwner, String repoName) {
-        if (diagnosticsCollector == null) {
-            return null;
-        }
-        try {
-            return diagnosticsCollector.collect(repoOwner, repoName, null);
-        } catch (RuntimeException e) {
-            logger.warn("Failed to collect Actions diagnostics for {}/{}: {}", repoOwner, repoName, e.getMessage());
-            return null;
+                    + " sha=" + normalizedSha, e);
         }
     }
 
