@@ -19,7 +19,7 @@ jobs:
     permissions:
       contents: write
       issues: read
-      pull-requests: read
+      pull-requests: write
     steps:
       - name: Resolve release metadata
         id: release
@@ -72,7 +72,7 @@ jobs:
       - name: Verify GPG key and passphrase
         run: |
           if [ -f ./.github/scripts/verify-gpg.sh ]; then
-            ./.github/scripts/verify-gpg.sh
+            bash ./.github/scripts/verify-gpg.sh
             exit 0
           fi
           echo "verify-gpg.sh not found in this ref; running inline check."
@@ -120,6 +120,41 @@ jobs:
 
       - name: Deploy to Maven Central (Central Portal)
         run: ./mvnw -B -Prelease -DskipTests -Dgpg.passphrase="${{ secrets.GPG_PASSPHRASE }}" deploy
+
+      - name: Resolve next development version
+        id: next
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
+          NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-SNAPSHOT"
+          echo "version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare next development version
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          ./mvnw -B org.codehaus.mojo:versions-maven-plugin:2.16.2:set \
+            -DnewVersion="${{ steps.next.outputs.version }}" \
+            -DgenerateBackupPoms=false
+
+      - name: Create next development PR
+        id: next-pr
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          commit-message: "chore: bump version to ${{ steps.next.outputs.version }}"
+          title: "chore: bump version to ${{ steps.next.outputs.version }}"
+          body: "Post-release version bump after ${{ steps.release.outputs.tag }}."
+          branch: "chore/v${{ steps.next.outputs.version }}"
+          base: main
+
+      - name: Enable auto-merge for next development PR
+        if: ${{ steps.next-pr.outputs.pull-request-number != '' }}
+        uses: peter-evans/enable-pull-request-automerge@a660677d5469627102a1c1e11409dd063606628d
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          pull-request-number: ${{ steps.next-pr.outputs.pull-request-number }}
+          merge-method: squash
 
       - name: Generate release notes
         uses: spring-io/github-changelog-generator@c247eb874a8bbc2c7b91ed7227d8eb66eb639d38 # v0.0.13
