@@ -14,10 +14,9 @@ This document describes how to cut a release using GitHub Actions and the Spring
 5. Tag creation triggers the **Release** workflow (or you can run it manually), which will:
    - build and test
    - deploy to Maven Central (requires `-Prelease`, GPG, and Central Portal credentials)
+   - open a PR that bumps `main` to the next patch `-SNAPSHOT` version and enables auto-merge
    - generate release notes from the milestone
    - create the GitHub Release
-
-After the release, bump the next development version (e.g. `1.1.8-SNAPSHOT`) via PR.
 
 ## Snapshots
 
