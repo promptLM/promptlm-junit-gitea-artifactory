@@ -2,7 +2,8 @@
 ![Maven Central](https://img.shields.io/maven-central/v/dev.promptlm.test/junit-gitea-artifactory)
 ![CI](https://img.shields.io/github/actions/workflow/status/promptLM/promptlm-junit-gitea-artifactory/ci.yml?branch=main)
 ![License](https://img.shields.io/github/license/promptLM/promptlm-junit-gitea-artifactory)
-![Static Badge](https://img.shields.io/badge/Windsurf_IDE-blue?style=flat&label=AI%20generated)
+![Static Badge](https://img.shields.io/badge/Windsurf_IDE-purple?style=flat&label=AI%20generated)
+
 
 
 
