@@ -24,6 +24,8 @@ final class GiteaActionsSupport {
     private static final int ACTION_VARIABLE_CREATE_ATTEMPTS = 12;
     private static final int ACTION_VARIABLE_UPDATE_ATTEMPTS = 10;
     private static final Duration ACTION_VARIABLE_RETRY_DELAY = Duration.ofSeconds(1);
+    private static final int ACTION_RUN_DELETE_ATTEMPTS = 12;
+    private static final Duration ACTION_RUN_DELETE_RETRY_DELAY = Duration.ofMillis(500);
 
     private final HttpClient httpClient;
     private final Logger logger;
@@ -223,7 +225,7 @@ final class GiteaActionsSupport {
                 continue;
             }
             cancelActionsRun(repoOwner, repoName, runId);
-            if (deleteActionsRun(repoOwner, repoName, runId)) {
+            if (deleteActionsRunWithRetry(repoOwner, repoName, runId)) {
                 removed++;
             }
         }
@@ -348,7 +350,37 @@ final class GiteaActionsSupport {
         }
     }
 
-    private boolean deleteActionsRun(String repoOwner, String repoName, long runId) {
+    private boolean deleteActionsRunWithRetry(String repoOwner, String repoName, long runId) {
+        for (int attempt = 1; attempt <= ACTION_RUN_DELETE_ATTEMPTS; attempt++) {
+            DeleteActionsRunOutcome outcome = deleteActionsRun(repoOwner, repoName, runId);
+            if (outcome.deleted()) {
+                return true;
+            }
+            if (!outcome.retryable()) {
+                return false;
+            }
+            if (attempt < ACTION_RUN_DELETE_ATTEMPTS) {
+                sleepBeforeDeleteRetry(runId, repoOwner, repoName, attempt);
+            }
+        }
+
+        logger.warn("Actions run {} for {}/{} remained active after cancellation and could not be deleted",
+                runId, repoOwner, repoName);
+        return false;
+    }
+
+    private void sleepBeforeDeleteRetry(long runId, String repoOwner, String repoName, int attempt) {
+        try {
+            logger.info("Actions run {} for {}/{} is still active after cancel; retrying delete attempt {}/{}",
+                    runId, repoOwner, repoName, attempt + 1, ACTION_RUN_DELETE_ATTEMPTS);
+            Thread.sleep(ACTION_RUN_DELETE_RETRY_DELAY.toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new GiteaHarnessException("Interrupted while waiting to delete Actions run " + runId, e);
+        }
+    }
+
+    private DeleteActionsRunOutcome deleteActionsRun(String repoOwner, String repoName, long runId) {
         URI uri = URI.create(String.format("%s/repos/%s/%s/actions/runs/%d",
                 apiUrlSupplier.get(), repoOwner, repoName, runId));
         HttpRequest request = HttpRequest.newBuilder(uri)
@@ -360,20 +392,41 @@ final class GiteaActionsSupport {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             HttpDebugLogger.logHttpResponse(logger, "DELETE", uri.toString(), response);
             if (response.statusCode() == 200 || response.statusCode() == 202 || response.statusCode() == 204) {
-                return true;
+                return DeleteActionsRunOutcome.deletedOutcome();
             }
             if (response.statusCode() == 404) {
-                return true;
+                return DeleteActionsRunOutcome.deletedOutcome();
+            }
+            if (response.statusCode() == 400 && isRunNotDoneResponse(response.body())) {
+                return DeleteActionsRunOutcome.retryableOutcome();
             }
             logger.warn("Failed to delete Actions run {} for {}/{}: HTTP {} - {}",
                     runId, repoOwner, repoName, response.statusCode(), response.body());
-            return false;
+            return DeleteActionsRunOutcome.notDeletedOutcome();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new GiteaHarnessException("Interrupted while deleting Actions run " + runId, e);
         } catch (Exception e) {
             logger.warn("Failed to delete Actions run {} for {}/{}: {}", runId, repoOwner, repoName, e.getMessage());
-            return false;
+            return DeleteActionsRunOutcome.notDeletedOutcome();
+        }
+    }
+
+    private boolean isRunNotDoneResponse(String body) {
+        return body != null && body.toLowerCase(java.util.Locale.ROOT).contains("workflow run is not done");
+    }
+
+    private record DeleteActionsRunOutcome(boolean deleted, boolean retryable) {
+        private static DeleteActionsRunOutcome deletedOutcome() {
+            return new DeleteActionsRunOutcome(true, false);
+        }
+
+        private static DeleteActionsRunOutcome retryableOutcome() {
+            return new DeleteActionsRunOutcome(false, true);
+        }
+
+        private static DeleteActionsRunOutcome notDeletedOutcome() {
+            return new DeleteActionsRunOutcome(false, false);
         }
     }
 

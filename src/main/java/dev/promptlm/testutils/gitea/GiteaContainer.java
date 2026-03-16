@@ -46,6 +46,7 @@ public class GiteaContainer {
     private static final String RUNNER_NAME = "gitea-runner";
     private static final String DOCKER_IMAGE_LABEL = resolveImage("gitea.actions.job.image", "GITEA_ACTIONS_JOB_IMAGE",
             "docker://ghcr.io/catthehacker/ubuntu:act-22.04");
+    private static final String NODE_INSTALL_SCRIPT_RESOURCE = "/dev/promptlm/testutils/gitea/node-install.sh";
 
     private static final class FixedPortGenericContainer<SELF extends FixedPortGenericContainer<SELF>> extends GenericContainer<SELF> {
 
@@ -102,6 +103,9 @@ public class GiteaContainer {
         return value == null || value.trim().isEmpty();
     }
 
+    /**
+     * Create a new Gitea test harness with default credentials and ephemeral runner workspace.
+     */
     public GiteaContainer() {
         this.fixedHttpPort = reservePort();
         // Use a host alias that resolves to localhost on the host machine, while we
@@ -167,6 +171,8 @@ public class GiteaContainer {
 
     /**
      * Wait for a repository to become available in Gitea using default timeouts.
+     *
+     * @param repoName repository name owned by the configured admin user
      */
     public void waitForRepository(String repoName) {
         waitForRepository(repoName, DEFAULT_REPO_WAIT_TIMEOUT, DEFAULT_REPO_WAIT_INTERVAL);
@@ -174,6 +180,10 @@ public class GiteaContainer {
 
     /**
      * Wait for a repository to become available in Gitea.
+     *
+     * @param repoName repository name owned by the configured admin user
+     * @param timeout maximum time to wait
+     * @param pollInterval interval between existence checks
      */
     public void waitForRepository(String repoName, Duration timeout, Duration pollInterval) {
         Awaitility.await("repository " + repoName + " to exist")
@@ -185,6 +195,11 @@ public class GiteaContainer {
 
     /**
      * Create or update a repository Actions variable to the desired value.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @param variableName variable key
+     * @param value desired variable value
      */
     public void ensureRepositoryActionsVariable(String repoOwner, String repoName, String variableName, String value) {
         actionsSupport.ensureRepositoryActionsVariable(repoOwner, repoName, variableName, value);
@@ -192,6 +207,11 @@ public class GiteaContainer {
 
     /**
      * Read the value of a repository Actions variable.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @param variableName variable key
+     * @return current variable value
      */
     public String readRepositoryActionsVariable(String repoOwner, String repoName, String variableName) {
         return actionsSupport.readRepositoryActionsVariable(repoOwner, repoName, variableName);
@@ -232,77 +252,18 @@ public class GiteaContainer {
     }
 
     private String buildNodeInstallScript() {
-        return """
-                set -euo pipefail
-                if command -v node >/dev/null 2>&1; then
-                  node --version
-                  exit 0
-                fi
+        return readNodeInstallScript().formatted(NODE_VERSION);
+    }
 
-                install_with_pkg() {
-                  if command -v apk >/dev/null 2>&1; then
-                    apk update
-                    apk add --no-cache nodejs npm sudo
-                    return 0
-                  fi
-                  if command -v apt-get >/dev/null 2>&1; then
-                    export DEBIAN_FRONTEND=noninteractive
-                    apt-get update
-                    apt-get install -y nodejs npm curl ca-certificates gnupg sudo
-                    return 0
-                  fi
-                  return 1
-                }
-
-                download_to() {
-                  url="$1"
-                  out="$2"
-                  if command -v curl >/dev/null 2>&1; then
-                    curl -fsSL "$url" -o "$out"
-                  elif command -v wget >/dev/null 2>&1; then
-                    wget -q -O "$out" "$url"
-                  else
-                    echo 'Neither curl nor wget available for Node download' >&2
-                    exit 1
-                  fi
-                }
-
-                install_with_tarball() {
-                  NODE_VERSION="%s"
-                  case "$(uname -m)" in
-                    x86_64) NODE_ARCH=linux-x64 ;;
-                    aarch64|arm64) NODE_ARCH=linux-arm64 ;;
-                    *) echo 'Unsupported architecture for Node install' >&2; exit 1 ;;
-                  esac
-                  TMP_DIR=$(mktemp -d)
-                  download_to "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.tar.xz" "$TMP_DIR/node.tar.xz"
-                  mkdir -p /usr/local/lib/nodejs
-                  tar -xJf "$TMP_DIR/node.tar.xz" -C /usr/local/lib/nodejs
-                  NODE_DIR=/usr/local/lib/nodejs/node-v${NODE_VERSION}-${NODE_ARCH}
-                  ln -sf "$NODE_DIR/bin/node" /usr/local/bin/node
-                  ln -sf "$NODE_DIR/bin/npm" /usr/local/bin/npm
-                  ln -sf "$NODE_DIR/bin/npx" /usr/local/bin/npx
-                  rm -rf "$TMP_DIR"
-                  if ! command -v sudo >/dev/null 2>&1; then
-                    printf '#!/bin/sh\\nif [ "$1" = "--version" ]; then\\n  echo "sudo stub 1.0"\\n  exit 0\\nfi\\nexec "$@"\\n' > /usr/local/bin/sudo
-                    chmod +x /usr/local/bin/sudo
-                  fi
-                }
-
-                if ! install_with_pkg; then
-                  install_with_tarball
-                fi
-
-                if ! command -v sudo >/dev/null 2>&1; then
-                  if command -v apk >/dev/null 2>&1; then
-                    apk add --no-cache sudo || true
-                  elif command -v apt-get >/dev/null 2>&1; then
-                    apt-get install -y sudo || true
-                  fi
-                fi
-
-                node --version
-                """.formatted(NODE_VERSION);
+    private String readNodeInstallScript() {
+        try (var stream = GiteaContainer.class.getResourceAsStream(NODE_INSTALL_SCRIPT_RESOURCE)) {
+            if (stream == null) {
+                throw new IllegalStateException("Missing resource: " + NODE_INSTALL_SCRIPT_RESOURCE);
+            }
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to load Node install script resource", e);
+        }
     }
 
     /**
@@ -346,25 +307,43 @@ public class GiteaContainer {
     }
 
     private String tryGenerateRunnerTokenViaApi() {
+        String token = requestRunnerTokenViaApi("POST", "/admin/actions/runners/registration-token");
+        if (!isBlank(token)) {
+            return token;
+        }
+        token = requestRunnerTokenViaApi("POST", "/user/actions/runners/registration-token");
+        if (!isBlank(token)) {
+            return token;
+        }
+        token = requestRunnerTokenViaApi("GET", "/admin/runners/registration-token");
+        if (!isBlank(token)) {
+            return token;
+        }
+        return requestRunnerTokenViaApi("GET", "/user/actions/runners/registration-token");
+    }
+
+    private String requestRunnerTokenViaApi(String method, String path) {
         try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(getApiUrl() + "/actions/runners/registration-token"))
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(getApiUrl() + path))
                     .header("Authorization", "token " + adminToken)
-                    .header("Accept", "application/json")
-                    .GET()
-                    .build();
+                    .header("Accept", "application/json");
+
+            HttpRequest request = "POST".equals(method)
+                    ? requestBuilder.POST(HttpRequest.BodyPublishers.noBody()).build()
+                    : requestBuilder.GET().build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() == 200) {
+            if (response.statusCode() == 200 || response.statusCode() == 201) {
                 String body = response.body();
-                logger.debug("Runner token API response: {}", body);
+                logger.debug("Runner token API response from {} {}: {}", method, path, body);
                 return extractTokenFromResponse(body);
             }
 
-            logger.warn("Runner token API request failed: {} - {}", response.statusCode(), response.body());
+            logger.debug("Runner token API request failed for {} {}: {} - {}",
+                    method, path, response.statusCode(), response.body());
         } catch (Exception e) {
-            logger.warn("Runner token API call failed", e);
+            logger.debug("Runner token API call failed for {} {}", method, path, e);
         }
         return null;
     }
@@ -395,6 +374,11 @@ public class GiteaContainer {
 
     /**
      * Configure the admin user that will be created inside the Gitea instance.
+     *
+     * @param username admin username
+     * @param password admin password
+     * @param email admin email
+     * @return this container instance
      */
     public GiteaContainer withAdminUser(String username, String password, String email) {
         this.adminUsername = username;
@@ -405,6 +389,9 @@ public class GiteaContainer {
 
     /**
      * Enable or disable Actions support for this container. Must be called before {@link #start()}.
+     *
+     * @param enabled whether Actions support should be enabled
+     * @return this container instance
      */
     public GiteaContainer withActionsEnabled(boolean enabled) {
         this.actionsEnabled = enabled;
@@ -466,13 +453,28 @@ public class GiteaContainer {
             var result = container.execInContainer(
                     "sh",
                     "-lc",
-                    "if [ -f /data/gitea/conf/app.ini ]; then awk '/^\\[actions\\]/{flag=1} flag{print} /^\\[/{if (NR!=1 && $0!~\"\\[actions\\]\") exit}' /data/gitea/conf/app.ini; fi");
-            if (!result.getStdout().isBlank()) {
-                logger.warn("Gitea app.ini [actions] section:\n{}", result.getStdout().trim());
+                    "config=''; " +
+                            "for candidate in /etc/gitea/app.ini /data/gitea/conf/app.ini; do " +
+                            "  if [ -f \"$candidate\" ]; then config=\"$candidate\"; break; fi; " +
+                            "done; " +
+                            "if [ -n \"$config\" ]; then " +
+                            "  echo \"__CONFIG_PATH__=$config\"; " +
+                            "  awk '/^\\[actions\\]$/{print; flag=1; next} /^\\[/{if (flag) exit} flag{print}' \"$config\"; " +
+                            "else echo \"__CONFIG_PATH__=\"; fi");
+            String stdout = result.getStdout().trim();
+            if (!stdout.isBlank()) {
+                String[] lines = stdout.split("\\R", 2);
+                String configPath = lines.length > 0 ? lines[0].replace("__CONFIG_PATH__=", "") : "";
+                String section = lines.length > 1 ? lines[1].trim() : "";
+                if (!section.isBlank()) {
+                    logger.warn("Gitea app.ini [actions] section from {}:\n{}", configPath, section);
+                } else if (!configPath.isBlank()) {
+                    logger.warn("Gitea config found at {} but [actions] section was empty or missing", configPath);
+                } else {
+                    logger.warn("Gitea config file not found in expected locations");
+                }
             } else if (!result.getStderr().isBlank()) {
                 logger.warn("Gitea app.ini [actions] section read stderr: {}", result.getStderr().trim());
-            } else {
-                logger.warn("Gitea app.ini [actions] section not found or empty");
             }
         } catch (Exception e) {
             logger.warn("Failed to read Gitea actions config", e);
@@ -481,6 +483,12 @@ public class GiteaContainer {
 
     private void logGiteaActionsDatabaseState() {
         try {
+            var sqliteCheck = container.execInContainer("sh", "-lc", "command -v sqlite3 >/dev/null 2>&1");
+            if (sqliteCheck.getExitCode() != 0) {
+                logger.warn("sqlite3 is not installed in the Gitea image; skipping Actions database diagnostics");
+                return;
+            }
+
             var tables = container.execInContainer(
                     "sqlite3",
                     "/var/lib/gitea/data/gitea.db",
@@ -653,12 +661,19 @@ public class GiteaContainer {
         }
     }
 
+    /**
+     * Get the browser-facing base URL of the Gitea instance.
+     *
+     * @return web base URL
+     */
     public String getWebUrl() {
         return "http://localhost:" + fixedHttpPort;
     }
 
     /**
      * Get the API URL for Gitea API calls
+     *
+     * @return REST API base URL
      */
     public String getApiUrl() {
         return getWebUrl() + "/api/v1";
@@ -666,6 +681,8 @@ public class GiteaContainer {
 
     /**
      * Get the admin access token
+     *
+     * @return admin personal access token
      */
     public String getAdminToken() {
         return adminToken;
@@ -673,6 +690,8 @@ public class GiteaContainer {
 
     /**
      * Access the simplified Actions client for Gitea 1.25.4.
+     *
+     * @return Actions facade bound to this container
      */
     public GiteaActions actions() {
         return actions;
@@ -680,6 +699,8 @@ public class GiteaContainer {
 
     /**
      * Get the registration token generated for the Actions runner. May be {@code null} if Actions were disabled.
+     *
+     * @return runner registration token or {@code null}
      */
     public String getRunnerRegistrationToken() {
         return runnerRegistrationToken;
@@ -687,6 +708,8 @@ public class GiteaContainer {
 
     /**
      * Get the admin username
+     *
+     * @return admin username
      */
     public String getAdminUsername() {
         return adminUsername;
@@ -694,6 +717,8 @@ public class GiteaContainer {
 
     /**
      * Get the admin password
+     *
+     * @return admin password
      */
     public String getAdminPassword() {
         return adminPassword;
@@ -701,6 +726,9 @@ public class GiteaContainer {
 
     /**
      * Ensure Actions are enabled for a repository. Requires Gitea 1.21+.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
      */
     public void enableRepositoryActions(String repoOwner, String repoName) {
         actionsSupport.enableRepositoryActions(repoOwner, repoName);
@@ -708,6 +736,9 @@ public class GiteaContainer {
 
     /**
      * Logs actionable diagnostics for repository Actions setup and runs.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
      */
     public void logRepositoryActionsDiagnostics(String repoOwner, String repoName) {
         actionsSupport.logRepositoryActionsDiagnostics(repoOwner, repoName);
@@ -715,6 +746,11 @@ public class GiteaContainer {
 
     /**
      * Wait until at least one Actions run exists for the repository.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @param timeout maximum time to wait
+     * @param pollInterval interval between probes
      */
     public void waitForRepositoryActionsRun(String repoOwner, String repoName, Duration timeout, Duration pollInterval) {
         actionsSupport.waitForActionsRun(repoOwner, repoName, timeout, pollInterval);
@@ -722,6 +758,9 @@ public class GiteaContainer {
 
     /**
      * Best-effort reset of repository-specific Actions state (runs + stale task containers).
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
      */
     public void resetRepositoryActionsState(String repoOwner, String repoName) {
         int clearedRuns = clearRepositoryActionsRuns(repoOwner, repoName);
@@ -732,6 +771,8 @@ public class GiteaContainer {
 
     /**
      * Logs runner/container diagnostics useful for failed Actions runs.
+     *
+     * @param reason human-readable reason for collecting diagnostics
      */
     public void logActionsRunnerDiagnostics(String reason) {
         logRunnerDiagnostics(reason);
@@ -739,6 +780,11 @@ public class GiteaContainer {
 
     /**
      * Collect structured diagnostics for Actions observability.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @param runId optional run id to enrich the capture
+     * @return structured diagnostics snapshot
      */
     public GiteaActionsDiagnostics collectActionsDiagnostics(String repoOwner, String repoName, Long runId) {
         return diagnosticsCollector.collect(repoOwner, repoName, runId);
@@ -749,6 +795,10 @@ public class GiteaContainer {
      * <p>
      * Useful to keep acceptance runs deterministic by ensuring only freshly-triggered
      * runs are visible in the UI/API.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @return number of removed runs
      */
     public int clearRepositoryActionsRuns(String repoOwner, String repoName) {
         return actionsSupport.clearActionsRuns(repoOwner, repoName);
@@ -757,6 +807,8 @@ public class GiteaContainer {
 
     /**
      * Create a repository via the Gitea API
+     *
+     * @param repoName repository name
      */
     public void createRepository(String repoName) {
         createRepository(repoName, "Test repository created by GiteaContainer");
@@ -764,6 +816,9 @@ public class GiteaContainer {
 
     /**
      * Create a repository with description via the Gitea API
+     *
+     * @param repoName repository name
+     * @param description repository description
      */
     public void createRepository(String repoName, String description) {
         try {
@@ -794,6 +849,9 @@ public class GiteaContainer {
 
     /**
      * Check if a repository exists
+     *
+     * @param repoName repository name
+     * @return {@code true} when the repository exists
      */
     public boolean repositoryExists(String repoName) {
         try {
@@ -831,7 +889,7 @@ public class GiteaContainer {
             logger.info("Generating access token for admin user");
             var result = container.execInContainer("gitea", "admin", "user", "generate-access-token",
                     "--username", adminUsername,
-                    "--scopes", "write:repository,read:user,write:user",
+                    "--scopes", "write:repository,read:user,write:user,read:admin,write:admin",
                     "--token-name", "test-token",
                     "--raw");
 
@@ -848,6 +906,10 @@ public class GiteaContainer {
      * The runner communicates with the Gitea container via the {@code gitea-actions}
      * network alias, so this helper produces a URL that workflows can use when
      * pushing artifacts back to the repository.
+     *
+     * @param owner repository owner
+     * @param repositoryName repository name
+     * @return clone URL reachable from the runner network
      */
     public String buildRunnerAccessibleCloneUrl(String owner, String repositoryName) {
         if (owner == null || owner.isBlank()) {
