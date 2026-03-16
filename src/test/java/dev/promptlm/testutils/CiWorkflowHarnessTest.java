@@ -54,7 +54,7 @@ class CiWorkflowHarnessTest {
         String version = "1.0.0-" + System.currentTimeMillis();
         String owner = gitea.getAdminUsername();
         String deployRepositoryUrl = artifactory.getRunnerAccessibleApiUrl() + "/" + artifactory.getMavenRepositoryName();
-        String runnerCloneUrl = "http://host.docker.internal:%d/%s/%s.git".formatted(
+        String runnerCloneUrl = "http://localhost.localtest.me:%d/%s/%s.git".formatted(
                 URI.create(gitea.getWebUrl()).getPort(),
                 owner,
                 REPO_NAME);

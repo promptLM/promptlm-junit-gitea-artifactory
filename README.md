@@ -2,6 +2,12 @@
 ![Maven Central](https://img.shields.io/maven-central/v/dev.promptlm.test/junit-gitea-artifactory)
 ![CI](https://img.shields.io/github/actions/workflow/status/promptLM/promptlm-junit-gitea-artifactory/ci.yml?branch=main)
 ![License](https://img.shields.io/github/license/promptLM/promptlm-junit-gitea-artifactory)
+![Static Badge](https://img.shields.io/badge/Windsurf_IDE-purple?style=flat&label=AI%20generated)
+![Static Badge](https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F-white?style=flat&label=Engineered%20with)
+
+
+
+
 
 **JUnit 5 test support for spinning up Gitea and Artifactory via Testcontainers.**
 
@@ -59,6 +65,17 @@ var report = actions.waitForWorkflowRunBySha("owner", "repo", "commitSha",
 
 When Actions workflows time out, the container can collect diagnostics (runs, jobs, logs)
 to aid troubleshooting.
+
+## Fetching repository files
+
+Use the new raw-file helper to read workflow inputs or specs from a repository branch without
+rolling your own HTTP client:
+
+```java
+Optional<String> spec = gitea.fetchRawFile("owner", "repo", "main", "prompts/my-spec.json");
+String content = gitea.waitForRawFile("owner", "repo", "main", "prompts/my-spec.json",
+        Duration.ofSeconds(30), Duration.ofSeconds(1));
+```
 
 ## License
 
