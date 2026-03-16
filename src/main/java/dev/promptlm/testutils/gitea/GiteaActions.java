@@ -16,6 +16,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * Lightweight facade for reading and waiting on Gitea Actions workflow runs and jobs.
+ */
 public final class GiteaActions {
 
     private static final Set<String> TERMINAL_RUN_STATUSES = Set.of(
@@ -45,6 +48,14 @@ public final class GiteaActions {
     void setDiagnosticsCollector(GiteaActionsDiagnosticsCollector diagnosticsCollector) {
         this.diagnosticsCollector = diagnosticsCollector;
     }
+
+    /**
+     * List workflow runs visible for a repository.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @return workflow run summaries ordered as returned by Gitea
+     */
     public List<ActionRunSummary> listWorkflowRuns(String repoOwner, String repoName) {
         validateRepo(repoOwner, repoName);
         JsonNode response = apiClient.getJson("/repos/" + repoOwner + "/" + repoName + "/actions/runs");
@@ -60,6 +71,14 @@ public final class GiteaActions {
         return runs;
     }
 
+    /**
+     * List workflow jobs for a single run.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @param runId workflow run id
+     * @return workflow job summaries
+     */
     public List<ActionJobSummary> listWorkflowJobs(String repoOwner, String repoName, long runId) {
         validateRepo(repoOwner, repoName);
         if (runId <= 0) {
@@ -79,6 +98,15 @@ public final class GiteaActions {
         return jobs;
     }
 
+    /**
+     * Download raw logs for a workflow job.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @param runId workflow run id
+     * @param jobId workflow job id
+     * @return raw job logs
+     */
     public byte[] downloadWorkflowJobLogs(String repoOwner, String repoName, long runId, long jobId) {
         validateRepo(repoOwner, repoName);
         if (runId <= 0 || jobId <= 0) {
@@ -88,6 +116,16 @@ public final class GiteaActions {
                 + "/actions/runs/" + runId + "/jobs/" + jobId + "/logs").body();
     }
 
+    /**
+     * Wait for a workflow run matching a commit SHA to reach a terminal state.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @param commitSha full SHA or prefix to match
+     * @param timeout maximum time to wait
+     * @param pollInterval interval between probes
+     * @return terminal run report with jobs and aggregate job states
+     */
     public ActionExecutionReport waitForWorkflowRunBySha(String repoOwner,
                                                          String repoName,
                                                          String commitSha,
@@ -227,6 +265,20 @@ public final class GiteaActions {
         }
     }
 
+    /**
+     * Summary of a workflow run returned by Gitea.
+     *
+     * @param id run id
+     * @param name workflow name
+     * @param status current run status
+     * @param conclusion final conclusion, if present
+     * @param headBranch source branch
+     * @param headSha source commit SHA
+     * @param event triggering event
+     * @param htmlUrl browser URL for the run
+     * @param createdAt creation timestamp
+     * @param updatedAt last update timestamp
+     */
     public record ActionRunSummary(long id,
                                    String name,
                                    String status,
@@ -239,6 +291,17 @@ public final class GiteaActions {
                                    Instant updatedAt) {
     }
 
+    /**
+     * Summary of a workflow job returned by Gitea.
+     *
+     * @param id job id
+     * @param name job name
+     * @param status current job status
+     * @param conclusion final conclusion, if present
+     * @param startedAt job start timestamp as returned by Gitea
+     * @param completedAt job completion timestamp as returned by Gitea
+     * @param runnerName runner name that executed the job
+     */
     public record ActionJobSummary(long id,
                                    String name,
                                    String status,
@@ -248,9 +311,22 @@ public final class GiteaActions {
                                    String runnerName) {
     }
 
+    /**
+     * Aggregated result of waiting for a workflow run.
+     *
+     * @param run terminal workflow run
+     * @param jobs jobs associated with the run
+     * @param jobStateSummary counts grouped by normalized job status
+     */
     public record ActionExecutionReport(ActionRunSummary run,
                                         List<ActionJobSummary> jobs,
                                         Map<String, Long> jobStateSummary) {
+
+        /**
+         * Determine whether every job is already in a terminal state.
+         *
+         * @return {@code true} when no job is still pending or running
+         */
         public boolean allJobsTerminal() {
             return jobs.stream().allMatch(job -> job.status() != null
                     && TERMINAL_JOB_STATUSES.contains(job.status().toLowerCase(Locale.ROOT)));

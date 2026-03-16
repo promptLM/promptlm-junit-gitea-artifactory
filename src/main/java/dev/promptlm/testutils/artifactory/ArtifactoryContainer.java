@@ -51,6 +51,9 @@ public class ArtifactoryContainer {
     private String mavenRepoName = "libs-release-local";
     private String networkAlias = "artifactory";
     
+    /**
+     * Create a new Artifactory test harness with default users and repository names.
+     */
     public ArtifactoryContainer() {
         this.container = new GenericContainer<>(DockerImageName.parse(ARTIFACTORY_IMAGE))
                 .withExposedPorts(ARTIFACTORY_PORT, ARTIFACTORY_ACCESS_PORT)
@@ -79,6 +82,8 @@ public class ArtifactoryContainer {
 
     /**
      * Enable streaming container logs to SLF4J.
+     *
+     * @return this container instance
      */
     public ArtifactoryContainer enableLogging() {
         this.loggingEnabled = true;
@@ -87,6 +92,10 @@ public class ArtifactoryContainer {
     
     /**
      * Configure the admin user credentials
+     *
+     * @param username admin username
+     * @param password admin password
+     * @return this container instance
      */
     public ArtifactoryContainer withAdminUser(String username, String password) {
         this.adminUsername = username;
@@ -96,6 +105,11 @@ public class ArtifactoryContainer {
     
     /**
      * Configure the CI deployer user
+     *
+     * @param username deployer username
+     * @param password deployer password
+     * @param email deployer email
+     * @return this container instance
      */
     public ArtifactoryContainer withDeployerUser(String username, String password, String email) {
         this.deployerUsername = username;
@@ -106,12 +120,21 @@ public class ArtifactoryContainer {
     
     /**
      * Configure the Maven repository name
+     *
+     * @param repoName repository key
+     * @return this container instance
      */
     public ArtifactoryContainer withMavenRepository(String repoName) {
         this.mavenRepoName = repoName;
         return this;
     }
 
+    /**
+     * Configure the container network alias used by sibling containers.
+     *
+     * @param alias non-blank network alias
+     * @return this container instance
+     */
     public ArtifactoryContainer withNetworkAlias(String alias) {
         if (alias == null || alias.isBlank()) {
             throw new IllegalArgumentException("alias must not be blank");
@@ -123,6 +146,9 @@ public class ArtifactoryContainer {
     
     /**
      * Start the Artifactory container and initialize it
+     *
+     * @throws IOException when initialization HTTP calls fail
+     * @throws InterruptedException when the startup flow is interrupted
      */
     public void start() throws IOException, InterruptedException {
         logger.info("Starting Artifactory container...");
@@ -177,6 +203,8 @@ public class ArtifactoryContainer {
     
     /**
      * Get the web URL for accessing Artifactory UI
+     *
+     * @return browser-facing Artifactory URL
      */
     public String getWebUrl() {
         return "http://" + resolveHost() + ":" + container.getMappedPort(ARTIFACTORY_PORT);
@@ -184,21 +212,35 @@ public class ArtifactoryContainer {
     
     /**
      * Get the API URL for Artifactory API calls
+     *
+     * @return browser-facing Artifactory API base URL
      */
     public String getApiUrl() {
         return "http://" + resolveHost() + ":" + container.getMappedPort(ARTIFACTORY_PORT) + "/artifactory";
     }
 
+    /**
+     * Get the Artifactory API base URL reachable from sibling containers on the same Docker network.
+     *
+     * @return internal Artifactory API base URL
+     */
     public String getInternalApiUrl() {
         return "http://" + networkAlias + ":" + ARTIFACTORY_PORT + "/artifactory";
     }
 
+    /**
+     * Get the Artifactory API base URL reachable from a Testcontainers runner via the host bridge.
+     *
+     * @return runner-accessible Artifactory API base URL
+     */
     public String getRunnerAccessibleApiUrl() {
         return "http://host.testcontainers.internal:" + container.getMappedPort(ARTIFACTORY_PORT) + "/artifactory";
     }
     
     /**
      * Get the Maven repository URL for deployment
+     *
+     * @return Maven deployment repository URL
      */
     public String getMavenRepositoryUrl() {
         return getApiUrl() + "/" + mavenRepoName;
@@ -206,6 +248,8 @@ public class ArtifactoryContainer {
     
     /**
      * Get the admin username
+     *
+     * @return admin username
      */
     public String getAdminUsername() {
         return adminUsername;
@@ -213,6 +257,8 @@ public class ArtifactoryContainer {
     
     /**
      * Get the admin password
+     *
+     * @return admin password
      */
     public String getAdminPassword() {
         return adminPassword;
@@ -220,6 +266,8 @@ public class ArtifactoryContainer {
     
     /**
      * Get the deployer username
+     *
+     * @return deployer username
      */
     public String getDeployerUsername() {
         return deployerUsername;
@@ -227,6 +275,8 @@ public class ArtifactoryContainer {
     
     /**
      * Get the deployer password
+     *
+     * @return deployer password
      */
     public String getDeployerPassword() {
         return deployerPassword;
@@ -241,6 +291,8 @@ public class ArtifactoryContainer {
     
     /**
      * Get the Maven repository name
+     *
+     * @return Maven repository key
      */
     public String getMavenRepositoryName() {
         return mavenRepoName;
@@ -248,6 +300,8 @@ public class ArtifactoryContainer {
     
     /**
      * Get Basic Auth header for deployer user
+     *
+     * @return HTTP Basic Authorization header for the deployer user
      */
     public String getDeployerAuthHeader() {
         String credentials = deployerUsername + ":" + deployerPassword;
@@ -256,6 +310,9 @@ public class ArtifactoryContainer {
     
     /**
      * Check if a repository exists
+     *
+     * @param repoName repository key
+     * @return {@code true} when the repository exists
      */
     public boolean repositoryExists(String repoName) {
         try {

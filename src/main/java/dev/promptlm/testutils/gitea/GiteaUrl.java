@@ -16,6 +16,8 @@ public @interface GiteaUrl {
 
     /**
      * When true, inject the API URL instead of the web URL.
+     *
+     * @return {@code true} to inject the API URL
      */
     boolean api() default false;
 }
