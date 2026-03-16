@@ -266,6 +266,25 @@ public class GiteaContainer {
         }
     }
 
+    org.testcontainers.containers.Container.ExecResult execInRunner(String... command) {
+        if (runner == null) {
+            throw new IllegalStateException("Actions runner is not initialized");
+        }
+        try {
+            return runner.execInContainer(command);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to execute command in Actions runner", e);
+        }
+    }
+
+    boolean isRunnerRunning() {
+        return runner != null && runner.isRunning();
+    }
+
+    boolean isContainerRunning() {
+        return container != null && container.isRunning();
+    }
+
     /**
      * Generate an access token for the Actions runner using Gitea CLI
      */
