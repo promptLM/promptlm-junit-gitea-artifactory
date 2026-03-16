@@ -54,7 +54,7 @@ class CiWorkflowHarnessTest {
         String version = "1.0.0-" + System.currentTimeMillis();
         String owner = gitea.getAdminUsername();
         String deployRepositoryUrl = artifactory.getRunnerAccessibleApiUrl() + "/" + artifactory.getMavenRepositoryName();
-        String runnerCloneUrl = "http://localhost.localtest.me:%d/%s/%s.git".formatted(
+        String runnerCloneUrl = "http://host.docker.internal:%d/%s/%s.git".formatted(
                 URI.create(gitea.getWebUrl()).getPort(),
                 owner,
                 REPO_NAME);
@@ -71,8 +71,7 @@ class CiWorkflowHarnessTest {
 
         var report = waitForWorkflowReport(gitea, owner, commitSha);
         if (report.run().conclusion() == null || !"success".equalsIgnoreCase(report.run().conclusion())) {
-            gitea.logRepositoryActionsDiagnostics(owner, REPO_NAME);
-            gitea.logActionsRunnerDiagnostics("workflow concluded with " + report.run().conclusion());
+            printDiagnostics(gitea.collectActionsDiagnostics(owner, REPO_NAME, report.run().id()));
         }
         assertThat(report.run().conclusion()).isEqualToIgnoringCase("success");
         assertThat(report.allJobsTerminal()).isTrue();
@@ -97,10 +96,41 @@ class CiWorkflowHarnessTest {
                     Duration.ofMinutes(6),
                     Duration.ofSeconds(2));
         } catch (RuntimeException e) {
-            gitea.logRepositoryActionsDiagnostics(owner, REPO_NAME);
-            gitea.logActionsRunnerDiagnostics("workflow execution failed: " + e.getMessage());
+            printDiagnostics(gitea.collectActionsDiagnostics(owner, REPO_NAME, null));
             throw e;
         }
+    }
+
+    private void printDiagnostics(dev.promptlm.testutils.gitea.GiteaActionsDiagnostics diagnostics) {
+        if (diagnostics == null) {
+            System.err.println("No Gitea Actions diagnostics available.");
+            return;
+        }
+
+        System.err.println("=== Gitea Actions Diagnostics ===");
+        System.err.println("traceId=" + diagnostics.traceId());
+        System.err.println("repo=" + diagnostics.repoOwner() + "/" + diagnostics.repoName());
+        System.err.println("capturedAt=" + diagnostics.capturedAt());
+        System.err.println("giteaWorkflowFiles=" + diagnostics.giteaWorkflowFiles());
+        System.err.println("githubWorkflowFiles=" + diagnostics.githubWorkflowFiles());
+        System.err.println("runs=" + diagnostics.runs());
+        System.err.println("jobsByRunId=" + diagnostics.jobsByRunId());
+        if (!diagnostics.warnings().isEmpty()) {
+            System.err.println("warnings=" + diagnostics.warnings());
+        }
+        diagnostics.jobLogsByJobId().forEach((jobId, bytes) -> {
+            System.err.println("--- job log " + jobId + " ---");
+            System.err.println(new String(bytes, StandardCharsets.UTF_8));
+        });
+        if (diagnostics.runnerLogs() != null && !diagnostics.runnerLogs().isBlank()) {
+            System.err.println("--- runner logs ---");
+            System.err.println(diagnostics.runnerLogs());
+        }
+        if (diagnostics.giteaLogs() != null && !diagnostics.giteaLogs().isBlank()) {
+            System.err.println("--- gitea logs ---");
+            System.err.println(diagnostics.giteaLogs());
+        }
+        System.err.println("=== End Gitea Actions Diagnostics ===");
     }
 
     private void writeWorkflowProject(Path repositoryDir,
