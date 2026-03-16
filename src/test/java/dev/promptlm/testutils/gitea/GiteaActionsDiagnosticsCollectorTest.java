@@ -9,6 +9,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -62,7 +63,8 @@ class GiteaActionsDiagnosticsCollectorTest {
                 actions,
                 () -> "trace-123",
                 () -> "runner-logs",
-                () -> "gitea-logs");
+                () -> "gitea-logs",
+                List::of);
 
         GiteaActionsDiagnostics diagnostics = collector.collect("owner", "repo", null);
 
@@ -73,9 +75,58 @@ class GiteaActionsDiagnosticsCollectorTest {
         assertThat(diagnostics.jobsByRunId()).containsKey(44L);
         assertThat(diagnostics.jobLogsByJobId()).containsKey(8L);
         assertThat(new String(diagnostics.jobLogsByJobId().get(8L))).contains("logs");
+        assertThat(diagnostics.taskContainerLogsByJobId()).isEmpty();
         assertThat(diagnostics.runnerLogs()).contains("runner-logs");
         assertThat(diagnostics.giteaLogs()).contains("gitea-logs");
         assertThat(logCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void fallsBackToTaskContainerLogsWhenJobLogEndpointReturns404() throws Exception {
+        HttpClient httpClient = mock(HttpClient.class);
+        Logger logger = mock(Logger.class);
+
+        when(httpClient.send(argThat(request -> requestPath(request).contains("/jobs/8/logs")),
+                any(HttpResponse.BodyHandler.class)))
+                .thenAnswer(invocation -> {
+                    HttpRequest request = invocation.getArgument(0);
+                    URI uri = request.uri();
+                    return stubByteResponse(404, "missing".getBytes(), uri);
+                });
+
+        when(httpClient.send(argThat(request -> !requestPath(request).contains("/jobs/8/logs")),
+                any(HttpResponse.BodyHandler.class)))
+                .thenAnswer(invocation -> {
+                    HttpRequest request = invocation.getArgument(0);
+                    URI uri = request.uri();
+                    String path = requestPath(request);
+                    return stubStringResponse(200, responseBodyForPath(path), uri);
+                });
+
+        GiteaApiClient apiClient = new GiteaApiClient(
+                httpClient,
+                logger,
+                () -> "http://localhost:3000/api/v1",
+                () -> "token",
+                new ObjectMapper());
+
+        GiteaActions actions = new GiteaActions(apiClient, logger);
+        GiteaActionsDiagnosticsCollector collector = new GiteaActionsDiagnosticsCollector(
+                apiClient,
+                actions,
+                () -> "trace-123",
+                () -> "runner-logs",
+                () -> "gitea-logs",
+                () -> List.of(new GiteaActionsTaskContainerLog("cid", List.of("/gitea-actions-task-1"), null, "task-log")));
+
+        GiteaActionsDiagnostics diagnostics = collector.collect("owner", "repo", null);
+
+        assertThat(diagnostics.jobLogsByJobId()).doesNotContainKey(8L);
+        assertThat(diagnostics.taskContainerLogsByJobId()).containsKey(8L);
+        assertThat(diagnostics.taskContainerLogsByJobId().get(8L))
+                .extracting(GiteaActionsTaskContainerLog::logs)
+                .contains("task-log");
+        assertThat(diagnostics.warnings().stream().anyMatch(warning -> warning.contains("404"))).isTrue();
     }
 
     private static String requestPath(HttpRequest request) {

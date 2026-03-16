@@ -19,17 +19,20 @@ final class GiteaActionsDiagnosticsCollector {
     private final Supplier<String> traceIdSupplier;
     private final Supplier<String> runnerLogsSupplier;
     private final Supplier<String> giteaLogsSupplier;
+    private final Supplier<List<GiteaActionsTaskContainerLog>> taskContainerLogsSupplier;
 
     GiteaActionsDiagnosticsCollector(GiteaApiClient apiClient,
                                      GiteaActions actions,
                                      Supplier<String> traceIdSupplier,
                                      Supplier<String> runnerLogsSupplier,
-                                     Supplier<String> giteaLogsSupplier) {
+                                     Supplier<String> giteaLogsSupplier,
+                                     Supplier<List<GiteaActionsTaskContainerLog>> taskContainerLogsSupplier) {
         this.apiClient = Objects.requireNonNull(apiClient, "apiClient");
         this.actions = Objects.requireNonNull(actions, "actions");
         this.traceIdSupplier = Objects.requireNonNull(traceIdSupplier, "traceIdSupplier");
         this.runnerLogsSupplier = Objects.requireNonNull(runnerLogsSupplier, "runnerLogsSupplier");
         this.giteaLogsSupplier = Objects.requireNonNull(giteaLogsSupplier, "giteaLogsSupplier");
+        this.taskContainerLogsSupplier = Objects.requireNonNull(taskContainerLogsSupplier, "taskContainerLogsSupplier");
     }
 
     GiteaActionsDiagnostics collect(String repoOwner, String repoName, Long runId) {
@@ -54,6 +57,7 @@ final class GiteaActionsDiagnosticsCollector {
 
         Map<Long, List<GiteaActions.ActionJobSummary>> jobsByRunId = new HashMap<>();
         Map<Long, byte[]> jobLogsByJobId = new HashMap<>();
+        Map<Long, List<GiteaActionsTaskContainerLog>> taskContainerLogsByJobId = new HashMap<>();
         if (selectedRunId != null) {
             try {
                 List<GiteaActions.ActionJobSummary> jobs = actions.listWorkflowJobs(repoOwner, repoName, selectedRunId);
@@ -64,7 +68,25 @@ final class GiteaActionsDiagnosticsCollector {
                             byte[] logs = actions.downloadWorkflowJobLogs(repoOwner, repoName, selectedRunId, job.id());
                             jobLogsByJobId.put(job.id(), logs);
                         } catch (RuntimeException e) {
-                            warnings.add("Failed to download logs for job " + job.id() + ": " + e.getMessage());
+                            if (isNotFound(e)) {
+                                warnings.add("Job log endpoint returned 404 for job " + job.id()
+                                        + "; falling back to runner task container logs");
+                                try {
+                                    List<GiteaActionsTaskContainerLog> taskLogs = taskContainerLogsSupplier.get();
+                                    if (taskLogs != null && !taskLogs.isEmpty()) {
+                                        taskContainerLogsByJobId.put(job.id(), taskLogs);
+                                        warnings.add("Captured " + taskLogs.size()
+                                                + " runner task container log(s) for job " + job.id());
+                                    } else {
+                                        warnings.add("No runner task container logs found for job " + job.id());
+                                    }
+                                } catch (RuntimeException fallbackError) {
+                                    warnings.add("Failed to capture runner task container logs for job " + job.id()
+                                            + ": " + fallbackError.getMessage());
+                                }
+                            } else {
+                                warnings.add("Failed to download logs for job " + job.id() + ": " + e.getMessage());
+                            }
                         }
                     }
                 }
@@ -88,9 +110,17 @@ final class GiteaActionsDiagnosticsCollector {
                 runs,
                 jobsByRunId,
                 jobLogsByJobId,
+                taskContainerLogsByJobId,
                 runnerLogs,
                 giteaLogs,
                 warnings);
+    }
+
+    private boolean isNotFound(RuntimeException e) {
+        if (e instanceof GiteaApiException apiException) {
+            return apiException.getStatusCode() == 404;
+        }
+        return false;
     }
 
     private boolean shouldCaptureJobLogs(GiteaActions.ActionJobSummary job) {

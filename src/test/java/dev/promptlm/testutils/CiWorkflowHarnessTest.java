@@ -122,6 +122,13 @@ class CiWorkflowHarnessTest {
             System.err.println("--- job log " + jobId + " ---");
             System.err.println(new String(bytes, StandardCharsets.UTF_8));
         });
+        diagnostics.taskContainerLogsByJobId().forEach((jobId, logs) -> {
+            System.err.println("--- task container logs for job " + jobId + " ---");
+            logs.forEach(log -> {
+                System.err.println("--- task container " + log.containerId() + " " + log.containerNames() + " ---");
+                System.err.println(log.logs());
+            });
+        });
         if (diagnostics.runnerLogs() != null && !diagnostics.runnerLogs().isBlank()) {
             System.err.println("--- runner logs ---");
             System.err.println(diagnostics.runnerLogs());
