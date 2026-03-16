@@ -941,15 +941,18 @@ public class GiteaContainer {
     }
 
     private void waitForRunnerRegistration() {
+        Duration timeout = Duration.ofMinutes(1);
         try {
             Awaitility.await("actions runner to appear")
                     .pollInterval(Duration.ofSeconds(2))
-                    .atMost(Duration.ofMinutes(1))
+                    .atMost(timeout)
                     .ignoreExceptions()
                     .until(() -> runnerRegistry.isRunnerRegistered(RUNNER_NAME));
         } catch (org.awaitility.core.ConditionTimeoutException e) {
-            logger.warn("Actions runner '{}' was not detected after waiting. Workflows may remain queued.", RUNNER_NAME);
-            logRunnerDiagnostics("runner registration timeout");
+            logger.info("Actions runner '{}' was not detected within {} during startup. "
+                    + "Continuing; workflow waits remain the definitive readiness check.",
+                    RUNNER_NAME,
+                    timeout);
         }
     }
 
