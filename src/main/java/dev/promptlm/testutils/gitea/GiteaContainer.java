@@ -430,7 +430,7 @@ public class GiteaContainer {
     }
 
     private String buildInternalInstanceUrl() {
-        return "http://host.docker.internal:" + fixedHttpPort;
+        return "http://localhost.localtest.me:" + fixedHttpPort;
     }
 
     private void logRunnerDiagnostics(String reason) {
@@ -595,7 +595,13 @@ public class GiteaContainer {
                     .withEnv("GITEA_RUNNER_REGISTRATION_FILE", "/data/.runner")
                     .withFileSystemBind(runnerDataDir.toAbsolutePath().toString(), "/data", BindMode.READ_WRITE)
                     .withFileSystemBind("/var/run/docker.sock", "/var/run/docker.sock")
-                    .withCreateContainerCmdModifier(cmd -> cmd.withUser("0:0"));
+                    .withCreateContainerCmdModifier(cmd -> {
+                        cmd.withUser("0:0");
+                        cmd.withExtraHosts(
+                                "host.testcontainers.internal:host-gateway",
+                                "host.docker.internal:host-gateway",
+                                "localhost.localtest.me:host-gateway");
+                    });
 
             try {
                 runner.start();
