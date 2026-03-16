@@ -30,6 +30,7 @@ public final class GiteaActions {
             "canceled");
 
     private static final Set<String> TERMINAL_JOB_STATUSES = Set.of(
+            "completed",
             "success",
             "failure",
             "skipped",
@@ -86,9 +87,9 @@ public final class GiteaActions {
         }
         JsonNode response = apiClient.getJson("/repos/" + repoOwner + "/" + repoName
                 + "/actions/runs/" + runId + "/jobs");
-        JsonNode jobsNode = response.path("workflow_jobs");
+        JsonNode jobsNode = extractJobsArray(response);
         if (!jobsNode.isArray()) {
-            throw new GiteaHarnessException("Expected workflow_jobs array when listing Actions jobs for "
+            throw new GiteaHarnessException("Expected jobs array when listing Actions jobs for "
                     + repoOwner + "/" + repoName + " run " + runId + ". Response: " + response);
         }
         List<ActionJobSummary> jobs = new ArrayList<>();
@@ -96,6 +97,18 @@ public final class GiteaActions {
             jobs.add(toJobSummary(jobNode));
         }
         return jobs;
+    }
+
+    private JsonNode extractJobsArray(JsonNode response) {
+        JsonNode jobsNode = response.path("jobs");
+        if (jobsNode.isArray()) {
+            return jobsNode;
+        }
+        jobsNode = response.path("workflow_jobs");
+        if (jobsNode.isArray()) {
+            return jobsNode;
+        }
+        return jobsNode;
     }
 
     /**
@@ -328,8 +341,14 @@ public final class GiteaActions {
          * @return {@code true} when no job is still pending or running
          */
         public boolean allJobsTerminal() {
-            return jobs.stream().allMatch(job -> job.status() != null
-                    && TERMINAL_JOB_STATUSES.contains(job.status().toLowerCase(Locale.ROOT)));
+            return jobs.stream().allMatch(job -> {
+                if (job.status() != null
+                        && TERMINAL_JOB_STATUSES.contains(job.status().toLowerCase(Locale.ROOT))) {
+                    return true;
+                }
+                return job.conclusion() != null
+                        && TERMINAL_JOB_STATUSES.contains(job.conclusion().toLowerCase(Locale.ROOT));
+            });
         }
     }
 }

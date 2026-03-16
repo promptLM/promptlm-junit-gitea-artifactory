@@ -1,0 +1,39 @@
+name: deploy-artifactory
+on:
+  push:
+    branches:
+      - main
+
+env:
+  DEPLOY_REPOSITORY_URL: "{{DEPLOY_REPOSITORY_URL}}"
+  REPO_CLONE_URL: "{{REPO_CLONE_URL}}"
+  REPO_CLONE_USERNAME: "{{REPO_CLONE_USERNAME}}"
+  REPO_CLONE_TOKEN: "{{REPO_CLONE_TOKEN}}"
+  ARTIFACTORY_USERNAME: "{{ARTIFACTORY_USERNAME}}"
+  ARTIFACTORY_PASSWORD: "{{ARTIFACTORY_PASSWORD}}"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    container:
+      image: maven:3.9.6-eclipse-temurin-17
+    steps:
+      - name: Deploy smoke artifact
+        run: |
+          rm -rf repo
+          git clone "http://${REPO_CLONE_USERNAME}:${REPO_CLONE_TOKEN}@${REPO_CLONE_URL#http://}" repo
+          cd repo
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <servers>
+              <server>
+                <id>artifactory</id>
+                <username>${ARTIFACTORY_USERNAME}</username>
+                <password>${ARTIFACTORY_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+          mvn -B -ntp deploy -DskipTests \
+            -DaltDeploymentRepository=artifactory::default::${DEPLOY_REPOSITORY_URL}

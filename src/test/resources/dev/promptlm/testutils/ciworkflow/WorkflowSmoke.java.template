@@ -1,0 +1,7 @@
+package dev.promptlm.workflow;
+
+public class WorkflowSmoke {
+    public String value() {
+        return "ok";
+    }
+}

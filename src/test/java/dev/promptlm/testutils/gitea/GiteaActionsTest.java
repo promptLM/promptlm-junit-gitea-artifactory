@@ -39,7 +39,8 @@ class GiteaActionsTest {
         assertThat(report.run().id()).isEqualTo(42L);
         assertThat(report.run().headSha()).startsWith("abcd");
         assertThat(report.jobs()).hasSize(1);
-        assertThat(report.jobStateSummary()).containsEntry("success", 1L);
+        assertThat(report.jobStateSummary()).containsEntry("completed", 1L);
+        assertThat(report.allJobsTerminal()).isTrue();
     }
 
     @Test
@@ -76,6 +77,28 @@ class GiteaActionsTest {
                 Duration.ofMillis(50)))
                 .isInstanceOf(GiteaWorkflowException.class)
                 .hasMessageContaining("Timed out waiting for workflow run");
+    }
+
+    @Test
+    void acceptsLegacyWorkflowJobsArray() throws Exception {
+        GiteaActions actions = buildActionsClientWithJobs("""
+                {
+                  "workflow_jobs": [
+                    {
+                      "id": 7,
+                      "name": "build",
+                      "status": "success",
+                      "conclusion": "success",
+                      "runner_name": "runner-1"
+                    }
+                  ]
+                }
+                """);
+
+        assertThat(actions.listWorkflowJobs("owner", "repo", 42L))
+                .singleElement()
+                .extracting(GiteaActions.ActionJobSummary::name)
+                .isEqualTo("build");
     }
 
     private GiteaActions buildActionsClient() {
@@ -140,13 +163,41 @@ class GiteaActionsTest {
         return new GiteaActions(apiClient, logger);
     }
 
+    private GiteaActions buildActionsClientWithJobs(String jobsBody) throws Exception {
+        HttpClient httpClient = mock(HttpClient.class);
+        Logger logger = mock(Logger.class);
+
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenAnswer(invocation -> {
+                    HttpRequest request = invocation.getArgument(0);
+                    URI uri = request.uri();
+                    String path = uri == null ? "" : uri.getPath();
+                    if (path.contains("/logs")) {
+                        return stubByteResponse(200, "hello-job".getBytes(), uri);
+                    }
+                    if (path.contains("/actions/runs/42/jobs")) {
+                        return stubStringResponse(200, jobsBody, uri);
+                    }
+                    return stubStringResponse(200, responseBodyForPath(path), uri);
+                });
+
+        GiteaApiClient apiClient = new GiteaApiClient(
+                httpClient,
+                logger,
+                () -> "http://localhost:3000/api/v1",
+                () -> "token",
+                new ObjectMapper());
+
+        return new GiteaActions(apiClient, logger);
+    }
+
     private String responseBodyForPath(String path) {
         if (path.contains("/actions/runs/42/jobs")) {
             return "{" +
-                    "\"workflow_jobs\":[{" +
+                    "\"jobs\":[{" +
                     "\"id\":7," +
                     "\"name\":\"build\"," +
-                    "\"status\":\"success\"," +
+                    "\"status\":\"completed\"," +
                     "\"conclusion\":\"success\"," +
                     "\"started_at\":\"2024-01-01T10:00:00Z\"," +
                     "\"completed_at\":\"2024-01-01T10:01:00Z\"," +

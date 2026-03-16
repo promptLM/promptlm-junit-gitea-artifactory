@@ -24,6 +24,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -77,6 +78,8 @@ public class GiteaContainer {
     private static final String NODE_VERSION = "20.17.0";
     private static final Duration DEFAULT_REPO_WAIT_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration DEFAULT_REPO_WAIT_INTERVAL = Duration.ofMillis(500);
+    private static final Duration DEFAULT_RAW_FILE_WAIT_TIMEOUT = DEFAULT_REPO_WAIT_TIMEOUT;
+    private static final Duration DEFAULT_RAW_FILE_WAIT_INTERVAL = DEFAULT_REPO_WAIT_INTERVAL;
 
     private String adminUsername = "testuser";
     private String adminPassword = "testpass123";
@@ -90,6 +93,7 @@ public class GiteaContainer {
     private final GiteaActionsDiagnosticsCollector diagnosticsCollector;
     private final GiteaRunnerRegistry runnerRegistry;
     private final GiteaActionsSupport actionsSupport;
+    private final GiteaRawFileClient rawFileClient;
 
     private static String resolveImage(String propertyKey, String envKey, String defaultValue) {
         String value = System.getProperty(propertyKey);
@@ -150,6 +154,7 @@ public class GiteaContainer {
         this.actions.setDiagnosticsCollector(diagnosticsCollector);
         this.runnerRegistry = new GiteaRunnerRegistry(apiClient, logger);
         this.actionsSupport = new GiteaActionsSupport(httpClient, logger, this::getApiUrl, () -> adminToken);
+        this.rawFileClient = new GiteaRawFileClient(httpClient, logger, this::getWebUrl, () -> adminToken);
 
         try {
             this.runnerDataDir = Files.createTempDirectory("gitea-runner-data-");
@@ -264,6 +269,25 @@ public class GiteaContainer {
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to load Node install script resource", e);
         }
+    }
+
+    org.testcontainers.containers.Container.ExecResult execInRunner(String... command) {
+        if (runner == null) {
+            throw new IllegalStateException("Actions runner is not initialized");
+        }
+        try {
+            return runner.execInContainer(command);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to execute command in Actions runner", e);
+        }
+    }
+
+    boolean isRunnerRunning() {
+        return runner != null && runner.isRunning();
+    }
+
+    boolean isContainerRunning() {
+        return container != null && container.isRunning();
     }
 
     /**
@@ -406,7 +430,7 @@ public class GiteaContainer {
     }
 
     private String buildInternalInstanceUrl() {
-        return "http://host.docker.internal:" + fixedHttpPort;
+        return "http://localhost.localtest.me:" + fixedHttpPort;
     }
 
     private void logRunnerDiagnostics(String reason) {
@@ -571,7 +595,13 @@ public class GiteaContainer {
                     .withEnv("GITEA_RUNNER_REGISTRATION_FILE", "/data/.runner")
                     .withFileSystemBind(runnerDataDir.toAbsolutePath().toString(), "/data", BindMode.READ_WRITE)
                     .withFileSystemBind("/var/run/docker.sock", "/var/run/docker.sock")
-                    .withCreateContainerCmdModifier(cmd -> cmd.withUser("0:0"));
+                    .withCreateContainerCmdModifier(cmd -> {
+                        cmd.withUser("0:0");
+                        cmd.withExtraHosts(
+                                "host.testcontainers.internal:host-gateway",
+                                "host.docker.internal:host-gateway",
+                                "localhost.localtest.me:host-gateway");
+                    });
 
             try {
                 runner.start();
@@ -695,6 +725,66 @@ public class GiteaContainer {
      */
     public GiteaActions actions() {
         return actions;
+    }
+
+    /**
+     * Fetch a raw file from the repository using the admin token.
+     *
+     * @param owner repository owner
+     * @param repo repository name
+     * @param branch branch or ref name
+     * @param relativePath path within the repository
+     * @return optional file contents in UTF-8
+     */
+    public Optional<String> fetchRawFile(String owner, String repo, String branch, String relativePath) {
+        return rawFileClient.fetchRawFile(owner, repo, branch, relativePath);
+    }
+
+    /**
+     * Fetch a raw file from the repository using the admin token.
+     *
+     * @param owner repository owner
+     * @param repo repository name
+     * @param branch branch or ref name
+     * @param relativePath path within the repository
+     * @return optional raw bytes
+     */
+    public Optional<byte[]> fetchRawFileBytes(String owner, String repo, String branch, String relativePath) {
+        return rawFileClient.fetchRawFileBytes(owner, repo, branch, relativePath);
+    }
+
+    /**
+     * Wait for a raw file to become available, returning its UTF-8 contents.
+     *
+     * @param owner repository owner
+     * @param repo repository name
+     * @param branch branch or ref name
+     * @param relativePath path within the repository
+     * @return file contents once available
+     */
+    public String waitForRawFile(String owner, String repo, String branch, String relativePath) {
+        return waitForRawFile(owner, repo, branch, relativePath,
+                DEFAULT_RAW_FILE_WAIT_TIMEOUT, DEFAULT_RAW_FILE_WAIT_INTERVAL);
+    }
+
+    /**
+     * Wait for a raw file to become available, returning its UTF-8 contents.
+     *
+     * @param owner repository owner
+     * @param repo repository name
+     * @param branch branch or ref name
+     * @param relativePath path within the repository
+     * @param timeout maximum time to wait
+     * @param pollInterval interval between probes
+     * @return file contents once available
+     */
+    public String waitForRawFile(String owner,
+                                 String repo,
+                                 String branch,
+                                 String relativePath,
+                                 Duration timeout,
+                                 Duration pollInterval) {
+        return rawFileClient.waitForRawFile(owner, repo, branch, relativePath, timeout, pollInterval);
     }
 
     /**
@@ -922,15 +1012,18 @@ public class GiteaContainer {
     }
 
     private void waitForRunnerRegistration() {
+        Duration timeout = Duration.ofMinutes(1);
         try {
             Awaitility.await("actions runner to appear")
                     .pollInterval(Duration.ofSeconds(2))
-                    .atMost(Duration.ofMinutes(1))
+                    .atMost(timeout)
                     .ignoreExceptions()
                     .until(() -> runnerRegistry.isRunnerRegistered(RUNNER_NAME));
         } catch (org.awaitility.core.ConditionTimeoutException e) {
-            logger.warn("Actions runner '{}' was not detected after waiting. Workflows may remain queued.", RUNNER_NAME);
-            logRunnerDiagnostics("runner registration timeout");
+            logger.info("Actions runner '{}' was not detected within {} during startup. "
+                    + "Continuing; workflow waits remain the definitive readiness check.",
+                    RUNNER_NAME,
+                    timeout);
         }
     }
 
