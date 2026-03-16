@@ -60,6 +60,17 @@ var report = actions.waitForWorkflowRunBySha("owner", "repo", "commitSha",
 When Actions workflows time out, the container can collect diagnostics (runs, jobs, logs)
 to aid troubleshooting.
 
+## Fetching repository files
+
+Use the new raw-file helper to read workflow inputs or specs from a repository branch without
+rolling your own HTTP client:
+
+```java
+Optional<String> spec = gitea.fetchRawFile("owner", "repo", "main", "prompts/my-spec.json");
+String content = gitea.waitForRawFile("owner", "repo", "main", "prompts/my-spec.json",
+        Duration.ofSeconds(30), Duration.ofSeconds(1));
+```
+
 ## License
 
 MIT. See `LICENSE`.
