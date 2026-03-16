@@ -1,7 +1,9 @@
 package dev.promptlm.testutils.gitea;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.model.Container;
+import com.github.dockerjava.api.model.Frame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.awaitility.Awaitility;
@@ -20,12 +22,18 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Testcontainers wrapper for Gitea that provides easy setup and management for tests.
@@ -150,7 +158,8 @@ public class GiteaContainer {
                 actions,
                 () -> traceId,
                 () -> runner == null ? null : runner.getLogs(),
-                () -> container == null ? null : container.getLogs());
+                () -> container == null ? null : container.getLogs(),
+                this::collectRecentActionsTaskContainerLogs);
         this.actions.setDiagnosticsCollector(diagnosticsCollector);
         this.runnerRegistry = new GiteaRunnerRegistry(apiClient, logger);
         this.actionsSupport = new GiteaActionsSupport(httpClient, logger, this::getApiUrl, () -> adminToken);
@@ -668,6 +677,75 @@ public class GiteaContainer {
             logger.info("Removed {} stale Actions task container(s)", removed);
         }
         return removed;
+    }
+
+    List<GiteaActionsTaskContainerLog> collectRecentActionsTaskContainerLogs() {
+        int maxContainers = 5;
+        int tailLines = 2_000;
+        Duration maxWait = Duration.ofSeconds(10);
+
+        List<GiteaActionsTaskContainerLog> results = new java.util.ArrayList<>();
+        try {
+            var dockerClient = DockerClientFactory.instance().client();
+            List<Container> containers = dockerClient.listContainersCmd().withShowAll(true).exec();
+            containers.stream()
+                    .filter(container -> {
+                        String[] names = container.getNames();
+                        if (names == null || names.length == 0) {
+                            return false;
+                        }
+                        String joinedNames = String.join(",", names).toLowerCase(Locale.ROOT);
+                        return joinedNames.contains("gitea-actions-task-");
+                    })
+                    .sorted((a, b) -> Long.compare(b.getCreated() == null ? 0 : b.getCreated(),
+                            a.getCreated() == null ? 0 : a.getCreated()))
+                    .limit(maxContainers)
+                    .forEach(container -> {
+                        String logs = "";
+                        try {
+                            var callback = new ResultCallback.Adapter<Frame>() {
+                                private final java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+
+                                @Override
+                                public void onNext(Frame frame) {
+                                    if (frame != null && frame.getPayload() != null) {
+                                        try {
+                                            buffer.write(frame.getPayload());
+                                        } catch (java.io.IOException ignored) {
+                                            // ignored
+                                        }
+                                    }
+                                }
+
+                                String content() {
+                                    return buffer.toString(java.nio.charset.StandardCharsets.UTF_8);
+                                }
+                            };
+
+                            dockerClient.logContainerCmd(container.getId())
+                                    .withStdOut(true)
+                                    .withStdErr(true)
+                                    .withTail(tailLines)
+                                    .exec(callback);
+
+                            callback.awaitCompletion(maxWait.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+                            logs = callback.content();
+                            callback.close();
+                        } catch (Exception e) {
+                            logs = "<failed to capture container logs: " + e.getMessage() + ">";
+                        }
+
+                        results.add(new GiteaActionsTaskContainerLog(
+                                container.getId(),
+                                container.getNames() == null ? List.of() : List.of(container.getNames()),
+                                container.getCreated() == null ? null : Instant.ofEpochSecond(container.getCreated()),
+                                logs));
+                    });
+        } catch (Exception e) {
+            logger.warn("Failed to collect Actions task container logs: {}", e.getMessage());
+        }
+
+        return results;
     }
 
     /**

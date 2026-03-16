@@ -16,6 +16,7 @@ import java.util.Map;
  * @param runs workflow runs returned by Gitea
  * @param jobsByRunId workflow jobs grouped by run id
  * @param jobLogsByJobId raw job logs grouped by job id
+ * @param taskContainerLogsByJobId fallback task container logs grouped by job id
  * @param runnerLogs runner container logs
  * @param giteaLogs Gitea container logs
  * @param warnings warnings emitted while collecting diagnostics
@@ -29,6 +30,7 @@ public record GiteaActionsDiagnostics(String traceId,
                                      List<GiteaActions.ActionRunSummary> runs,
                                      Map<Long, List<GiteaActions.ActionJobSummary>> jobsByRunId,
                                      Map<Long, byte[]> jobLogsByJobId,
+                                     Map<Long, List<GiteaActionsTaskContainerLog>> taskContainerLogsByJobId,
                                      String runnerLogs,
                                      String giteaLogs,
                                      List<String> warnings) {
