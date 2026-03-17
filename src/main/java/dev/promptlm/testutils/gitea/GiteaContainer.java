@@ -58,16 +58,10 @@ public class GiteaContainer {
     private static final String DOCKER_IMAGE_LABEL = resolveImage("gitea.actions.job.image", "GITEA_ACTIONS_JOB_IMAGE",
             "docker://ghcr.io/catthehacker/ubuntu:act-22.04");
     private static final String NODE_INSTALL_SCRIPT_RESOURCE = "/dev/promptlm/testutils/gitea/node-install.sh";
+    private static final String ACTIONS_LOG_DIR = "/var/lib/gitea/actions_log";
     private static final int ACTIONS_LOG_FILE_LIMIT = 8;
     private static final long ACTIONS_LOG_MAX_FILE_SIZE_BYTES = 2L * 1024 * 1024;
     private static final int ACTIONS_LOG_MAX_LINES = 400;
-    private static final List<String> ACTIONS_LOG_DIR_CANDIDATES = List.of(
-            "/var/lib/gitea/actions_log",
-            "/var/lib/gitea/data/actions_log",
-            "/var/lib/gitea/data/actions/log",
-            "/var/lib/gitea/log/actions",
-            "/data/gitea/actions_log",
-            "/data/gitea/log/actions");
 
     private static final class FixedPortGenericContainer<SELF extends FixedPortGenericContainer<SELF>> extends GenericContainer<SELF> {
 
@@ -155,6 +149,8 @@ public class GiteaContainer {
                 .withEnv("GITEA__repository__ENABLE_PUSH_CREATE_USER", "true")
                 .withEnv("GITEA__repository__ENABLE_PUSH_CREATE_ORG", "true")
                 .withEnv("GITEA__queue__TYPE", "channel")
+                .withEnv("GITEA__actions__STORAGE_TYPE", "local")
+                .withEnv("GITEA__storage.actions_log__PATH", ACTIONS_LOG_DIR)
                 .withEnv("USER_UID", "1000")
                 .withEnv("USER_GID", "1000")
                 .waitingFor(Wait.forHttp("/").forPort(GITEA_PORT).forStatusCode(200))
@@ -793,30 +789,14 @@ public class GiteaContainer {
     }
 
     private List<String> listGiteaActionsLogFilePaths() {
-        String candidates = ACTIONS_LOG_DIR_CANDIDATES.stream()
-                .map(GiteaContainer::shellSingleQuote)
-                .collect(Collectors.joining(" "));
-        String fallbackRoots = List.of("/var/lib/gitea", "/data/gitea").stream()
-                .map(GiteaContainer::shellSingleQuote)
-                .collect(Collectors.joining(" "));
-        String command = "set -eu; found=''; " +
-                "for dir in " + candidates + "; do " +
-                "  if [ -d \"$dir\" ]; then " +
-                "    while IFS= read -r file; do found=\"$found$file\\n\"; done <<EOF\n" +
-                "$(find \"$dir\" -maxdepth 5 -type f 2>/dev/null | sort)\n" +
-                "EOF\n" +
-                "  fi; " +
-                "done; " +
-                "if [ -z \"$found\" ]; then " +
-                "  for root in " + fallbackRoots + "; do " +
-                "    if [ -d \"$root\" ]; then " +
-                "      find \"$root\" -maxdepth 5 -type f " +
-                "        \\( -path '*/actions*/*' -o -name '*actions*.log' -o -name 'actions*.log' \\) 2>/dev/null; " +
-                "    fi; " +
-                "  done | sort; " +
-                "else " +
-                "  printf '%b' \"$found\"; " +
-                "fi";
+        String command = """
+                set -eu
+                dir=%s
+                if [ ! -d "$dir" ]; then
+                  exit 0
+                fi
+                find "$dir" -maxdepth 5 -type f | sort
+                """.formatted(shellSingleQuote(ACTIONS_LOG_DIR));
         try {
             var result = container.execInContainer("sh", "-lc", command);
             return Arrays.stream(result.getStdout().split("\\R"))
@@ -834,13 +814,15 @@ public class GiteaContainer {
 
     private long readGiteaActionsLogFileSize(String filePath) {
         try {
-            String escapedPath = shellSingleQuote(filePath);
-            var result = container.execInContainer(
-                    "sh",
-                    "-lc",
-                    "file=" + escapedPath + "; " +
-                            "if [ ! -f \"$file\" ]; then exit 0; fi; " +
-                            "wc -c < \"$file\" | tr -d '[:space:]'");
+            String command = """
+                    set -eu
+                    file=%s
+                    if [ ! -f "$file" ]; then
+                      exit 0
+                    fi
+                    wc -c < "$file" | tr -d '[:space:]'
+                    """.formatted(shellSingleQuote(filePath));
+            var result = container.execInContainer("sh", "-lc", command);
             String stdout = result.getStdout();
             if (stdout == null || stdout.isBlank()) {
                 return 0L;
