@@ -20,19 +20,23 @@ final class GiteaActionsDiagnosticsCollector {
     private final Supplier<String> runnerLogsSupplier;
     private final Supplier<String> giteaLogsSupplier;
     private final Supplier<List<GiteaActionsTaskContainerLog>> taskContainerLogsSupplier;
+    private final Supplier<List<GiteaActionsLogFile>> giteaActionsLogFilesSupplier;
 
     GiteaActionsDiagnosticsCollector(GiteaApiClient apiClient,
                                      GiteaActions actions,
                                      Supplier<String> traceIdSupplier,
                                      Supplier<String> runnerLogsSupplier,
                                      Supplier<String> giteaLogsSupplier,
-                                     Supplier<List<GiteaActionsTaskContainerLog>> taskContainerLogsSupplier) {
+                                     Supplier<List<GiteaActionsTaskContainerLog>> taskContainerLogsSupplier,
+                                     Supplier<List<GiteaActionsLogFile>> giteaActionsLogFilesSupplier) {
         this.apiClient = Objects.requireNonNull(apiClient, "apiClient");
         this.actions = Objects.requireNonNull(actions, "actions");
         this.traceIdSupplier = Objects.requireNonNull(traceIdSupplier, "traceIdSupplier");
         this.runnerLogsSupplier = Objects.requireNonNull(runnerLogsSupplier, "runnerLogsSupplier");
         this.giteaLogsSupplier = Objects.requireNonNull(giteaLogsSupplier, "giteaLogsSupplier");
         this.taskContainerLogsSupplier = Objects.requireNonNull(taskContainerLogsSupplier, "taskContainerLogsSupplier");
+        this.giteaActionsLogFilesSupplier = Objects.requireNonNull(giteaActionsLogFilesSupplier,
+                "giteaActionsLogFilesSupplier");
     }
 
     GiteaActionsDiagnostics collect(String repoOwner, String repoName, Long runId) {
@@ -58,6 +62,8 @@ final class GiteaActionsDiagnosticsCollector {
         Map<Long, List<GiteaActions.ActionJobSummary>> jobsByRunId = new HashMap<>();
         Map<Long, byte[]> jobLogsByJobId = new HashMap<>();
         Map<Long, List<GiteaActionsTaskContainerLog>> taskContainerLogsByJobId = new HashMap<>();
+        List<GiteaActionsLogFile> giteaActionsLogFiles = List.of();
+        boolean giteaActionsLogsCaptured = false;
         if (selectedRunId != null) {
             try {
                 List<GiteaActions.ActionJobSummary> jobs = actions.listWorkflowJobs(repoOwner, repoName, selectedRunId);
@@ -70,7 +76,7 @@ final class GiteaActionsDiagnosticsCollector {
                         } catch (RuntimeException e) {
                             if (isNotFound(e)) {
                                 warnings.add("Job log endpoint returned 404 for job " + job.id()
-                                        + "; falling back to runner task container logs");
+                                        + "; falling back to runner task container logs and Gitea Actions log files");
                                 try {
                                     List<GiteaActionsTaskContainerLog> taskLogs = taskContainerLogsSupplier.get();
                                     if (taskLogs != null && !taskLogs.isEmpty()) {
@@ -83,6 +89,22 @@ final class GiteaActionsDiagnosticsCollector {
                                 } catch (RuntimeException fallbackError) {
                                     warnings.add("Failed to capture runner task container logs for job " + job.id()
                                             + ": " + fallbackError.getMessage());
+                                }
+                                if (!giteaActionsLogsCaptured) {
+                                    giteaActionsLogsCaptured = true;
+                                    try {
+                                        List<GiteaActionsLogFile> logFiles = giteaActionsLogFilesSupplier.get();
+                                        if (logFiles != null && !logFiles.isEmpty()) {
+                                            giteaActionsLogFiles = List.copyOf(logFiles);
+                                            warnings.add("Captured " + giteaActionsLogFiles.size()
+                                                    + " Gitea Actions log file(s) from the container filesystem");
+                                        } else {
+                                            warnings.add("No Gitea Actions log files found inside the Gitea container");
+                                        }
+                                    } catch (RuntimeException fallbackError) {
+                                        warnings.add("Failed to capture Gitea Actions log files: "
+                                                + fallbackError.getMessage());
+                                    }
                                 }
                             } else {
                                 warnings.add("Failed to download logs for job " + job.id() + ": " + e.getMessage());
@@ -111,6 +133,7 @@ final class GiteaActionsDiagnosticsCollector {
                 jobsByRunId,
                 jobLogsByJobId,
                 taskContainerLogsByJobId,
+                giteaActionsLogFiles,
                 runnerLogs,
                 giteaLogs,
                 warnings);

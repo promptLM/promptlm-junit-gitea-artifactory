@@ -50,6 +50,7 @@
         <jackson.version>2.21.1</jackson.version>
         <mockito.version>5.23.0</mockito.version>
         <bytebuddy.version>1.18.7</bytebuddy.version>
+        <zstd.version>1.5.7-7</zstd.version>
         <maven.compiler.plugin.version>3.15.0</maven.compiler.plugin.version>
         <maven.source.plugin.version>3.4.0</maven.source.plugin.version>
         <maven.javadoc.plugin.version>3.12.0</maven.javadoc.plugin.version>
@@ -104,6 +105,12 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>${slf4j.version}</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.github.luben</groupId>
+            <artifactId>zstd-jni</artifactId>
+            <version>${zstd.version}</version>
             <scope>compile</scope>
         </dependency>
 

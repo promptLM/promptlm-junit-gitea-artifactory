@@ -129,6 +129,10 @@ class CiWorkflowHarnessTest {
                 System.err.println(log.logs());
             });
         });
+        diagnostics.giteaActionsLogFiles().forEach(logFile -> {
+            System.err.println("--- gitea actions log file " + logFile.path() + " (" + logFile.sizeBytes() + " bytes) ---");
+            System.err.println(logFile.contents());
+        });
         if (diagnostics.runnerLogs() != null && !diagnostics.runnerLogs().isBlank()) {
             System.err.println("--- runner logs ---");
             System.err.println(diagnostics.runnerLogs());
