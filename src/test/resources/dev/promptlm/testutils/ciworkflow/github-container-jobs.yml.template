@@ -1,0 +1,43 @@
+name: github-container-jobs
+on:
+  push:
+    branches:
+      - main
+
+env:
+  VERSION: "{{VERSION}}"
+  REPO_CLONE_URL: "{{REPO_CLONE_URL}}"
+  REPO_CLONE_USERNAME: "{{REPO_CLONE_USERNAME}}"
+  REPO_CLONE_TOKEN: "{{REPO_CLONE_TOKEN}}"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare
+        run: |
+          echo "version=${VERSION}"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    container: maven:3.9.9-eclipse-temurin-21
+    steps:
+      - name: Shell checkout
+        run: |
+          rm -rf repo
+          git clone "http://${REPO_CLONE_USERNAME}:${REPO_CLONE_TOKEN}@${REPO_CLONE_URL#http://}" repo
+      - name: Build
+        run: |
+          cd repo
+          mvn -B -ntp versions:set -DnewVersion=${VERSION}
+          mvn -B -ntp clean verify
+
+  deploy:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    container: maven:3.9.9-eclipse-temurin-21
+    steps:
+      - name: Deploy placeholder
+        run: |
+          echo "deploy ok"

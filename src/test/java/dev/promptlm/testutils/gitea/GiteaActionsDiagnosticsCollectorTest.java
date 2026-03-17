@@ -64,6 +64,7 @@ class GiteaActionsDiagnosticsCollectorTest {
                 () -> "trace-123",
                 () -> "runner-logs",
                 () -> "gitea-logs",
+                List::of,
                 List::of);
 
         GiteaActionsDiagnostics diagnostics = collector.collect("owner", "repo", null);
@@ -76,6 +77,7 @@ class GiteaActionsDiagnosticsCollectorTest {
         assertThat(diagnostics.jobLogsByJobId()).containsKey(8L);
         assertThat(new String(diagnostics.jobLogsByJobId().get(8L))).contains("logs");
         assertThat(diagnostics.taskContainerLogsByJobId()).isEmpty();
+        assertThat(diagnostics.giteaActionsLogFiles()).isEmpty();
         assertThat(diagnostics.runnerLogs()).contains("runner-logs");
         assertThat(diagnostics.giteaLogs()).contains("gitea-logs");
         assertThat(logCalls.get()).isEqualTo(1);
@@ -117,7 +119,8 @@ class GiteaActionsDiagnosticsCollectorTest {
                 () -> "trace-123",
                 () -> "runner-logs",
                 () -> "gitea-logs",
-                () -> List.of(new GiteaActionsTaskContainerLog("cid", List.of("/gitea-actions-task-1"), null, "task-log")));
+                () -> List.of(new GiteaActionsTaskContainerLog("cid", List.of("/gitea-actions-task-1"), null, "task-log")),
+                () -> List.of(new GiteaActionsLogFile("/var/lib/gitea/actions_log/build.log", 42L, "gitea-actions-log")));
 
         GiteaActionsDiagnostics diagnostics = collector.collect("owner", "repo", null);
 
@@ -126,6 +129,9 @@ class GiteaActionsDiagnosticsCollectorTest {
         assertThat(diagnostics.taskContainerLogsByJobId().get(8L))
                 .extracting(GiteaActionsTaskContainerLog::logs)
                 .contains("task-log");
+        assertThat(diagnostics.giteaActionsLogFiles())
+                .extracting(GiteaActionsLogFile::contents)
+                .contains("gitea-actions-log");
         assertThat(diagnostics.warnings().stream().anyMatch(warning -> warning.contains("404"))).isTrue();
     }
 

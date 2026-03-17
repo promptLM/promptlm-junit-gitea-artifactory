@@ -1,5 +1,6 @@
 package dev.promptlm.testutils.gitea;
 
+import com.github.luben.zstd.ZstdInputStream;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.model.Container;
@@ -13,6 +14,7 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.ServerSocket;
@@ -56,6 +58,10 @@ public class GiteaContainer {
     private static final String DOCKER_IMAGE_LABEL = resolveImage("gitea.actions.job.image", "GITEA_ACTIONS_JOB_IMAGE",
             "docker://ghcr.io/catthehacker/ubuntu:act-22.04");
     private static final String NODE_INSTALL_SCRIPT_RESOURCE = "/dev/promptlm/testutils/gitea/node-install.sh";
+    private static final String ACTIONS_LOG_DIR = "/var/lib/gitea/actions_log";
+    private static final int ACTIONS_LOG_FILE_LIMIT = 8;
+    private static final long ACTIONS_LOG_MAX_FILE_SIZE_BYTES = 2L * 1024 * 1024;
+    private static final int ACTIONS_LOG_MAX_LINES = 400;
 
     private static final class FixedPortGenericContainer<SELF extends FixedPortGenericContainer<SELF>> extends GenericContainer<SELF> {
 
@@ -143,6 +149,8 @@ public class GiteaContainer {
                 .withEnv("GITEA__repository__ENABLE_PUSH_CREATE_USER", "true")
                 .withEnv("GITEA__repository__ENABLE_PUSH_CREATE_ORG", "true")
                 .withEnv("GITEA__queue__TYPE", "channel")
+                .withEnv("GITEA__actions__STORAGE_TYPE", "local")
+                .withEnv("GITEA__storage.actions_log__PATH", ACTIONS_LOG_DIR)
                 .withEnv("USER_UID", "1000")
                 .withEnv("USER_GID", "1000")
                 .waitingFor(Wait.forHttp("/").forPort(GITEA_PORT).forStatusCode(200))
@@ -159,7 +167,8 @@ public class GiteaContainer {
                 () -> traceId,
                 () -> runner == null ? null : runner.getLogs(),
                 () -> container == null ? null : container.getLogs(),
-                this::collectRecentActionsTaskContainerLogs);
+                this::collectRecentActionsTaskContainerLogs,
+                this::collectGiteaActionsLogFiles);
         this.actions.setDiagnosticsCollector(diagnosticsCollector);
         this.runnerRegistry = new GiteaRunnerRegistry(apiClient, logger);
         this.actionsSupport = new GiteaActionsSupport(httpClient, logger, this::getApiUrl, () -> adminToken);
@@ -746,6 +755,126 @@ public class GiteaContainer {
         }
 
         return results;
+    }
+
+    List<GiteaActionsLogFile> collectGiteaActionsLogFiles() {
+        if (container == null || !container.isRunning()) {
+            return List.of();
+        }
+
+        List<String> filePaths = listGiteaActionsLogFilePaths();
+        if (filePaths.isEmpty()) {
+            return List.of();
+        }
+
+        List<GiteaActionsLogFile> results = new java.util.ArrayList<>();
+        for (String filePath : filePaths) {
+            try {
+                long sizeBytes = readGiteaActionsLogFileSize(filePath);
+                String contents;
+                if (sizeBytes > ACTIONS_LOG_MAX_FILE_SIZE_BYTES) {
+                    contents = "<omitted: file size " + sizeBytes + " exceeds capture limit "
+                            + ACTIONS_LOG_MAX_FILE_SIZE_BYTES + " bytes>";
+                } else {
+                    byte[] rawContents = container.copyFileFromContainer(filePath, InputStream::readAllBytes);
+                    contents = decodeGiteaActionsLogFile(filePath, rawContents);
+                    contents = tailTextLines(contents, ACTIONS_LOG_MAX_LINES);
+                }
+                results.add(new GiteaActionsLogFile(filePath, sizeBytes, contents));
+            } catch (Exception e) {
+                logger.warn("Failed to capture Gitea Actions log file {}: {}", filePath, e.getMessage());
+            }
+        }
+        return results;
+    }
+
+    private List<String> listGiteaActionsLogFilePaths() {
+        String command = """
+                set -eu
+                dir=%s
+                if [ ! -d "$dir" ]; then
+                  exit 0
+                fi
+                find "$dir" -maxdepth 5 -type f | sort
+                """.formatted(shellSingleQuote(ACTIONS_LOG_DIR));
+        try {
+            var result = container.execInContainer("sh", "-lc", command);
+            return Arrays.stream(result.getStdout().split("\\R"))
+                    .map(String::trim)
+                    .filter(path -> !path.isEmpty())
+                    .distinct()
+                    .sorted()
+                    .limit(ACTIONS_LOG_FILE_LIMIT)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            logger.warn("Failed to discover Gitea Actions log files: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private long readGiteaActionsLogFileSize(String filePath) {
+        try {
+            String command = """
+                    set -eu
+                    file=%s
+                    if [ ! -f "$file" ]; then
+                      exit 0
+                    fi
+                    wc -c < "$file" | tr -d '[:space:]'
+                    """.formatted(shellSingleQuote(filePath));
+            var result = container.execInContainer("sh", "-lc", command);
+            String stdout = result.getStdout();
+            if (stdout == null || stdout.isBlank()) {
+                return 0L;
+            }
+            return Long.parseLong(stdout.trim());
+        } catch (Exception e) {
+            logger.warn("Failed to read Gitea Actions log file size for {}: {}", filePath, e.getMessage());
+            return 0L;
+        }
+    }
+
+    private String decodeGiteaActionsLogFile(String filePath, byte[] rawContents) {
+        if (rawContents == null || rawContents.length == 0) {
+            return "";
+        }
+
+        byte[] decoded = rawContents;
+        if (filePath.endsWith(".zst")) {
+            try (var input = new ZstdInputStream(new java.io.ByteArrayInputStream(rawContents))) {
+                decoded = input.readAllBytes();
+            } catch (IOException e) {
+                logger.warn("Failed to decode Gitea Actions zstd log file {}: {}", filePath, e.getMessage());
+                return "<failed to decode zstd log file: " + e.getMessage() + ">";
+            }
+        }
+        return new String(decoded, StandardCharsets.UTF_8);
+    }
+
+    private String tailTextLines(String value, int maxLines) {
+        if (value == null || value.isBlank()) {
+            return value;
+        }
+        if (maxLines <= 0) {
+            return "";
+        }
+        String[] lines = value.split("\\R");
+        if (lines.length <= maxLines) {
+            return value;
+        }
+        int start = Math.max(0, lines.length - maxLines);
+        StringBuilder builder = new StringBuilder();
+        for (int i = start; i < lines.length; i++) {
+            builder.append(lines[i]);
+            if (i < lines.length - 1) {
+                builder.append('\n');
+            }
+        }
+        return builder.toString();
+    }
+
+    private static String shellSingleQuote(String value) {
+        return "'" + value.replace("'", "'\"'\"'") + "'";
     }
 
     /**
