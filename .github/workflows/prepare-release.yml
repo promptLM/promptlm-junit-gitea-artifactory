@@ -53,6 +53,19 @@ jobs:
             echo "release_version $RELEASE_VERSION must be greater than current version $CURRENT_BASE."
             exit 1
           fi
+          TAG="v${RELEASE_VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Release tag ${TAG} already exists on origin. Rerun the Release workflow for that tag instead of preparing a new release PR."
+            exit 1
+          fi
+          GROUP_ID="$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.groupId)"
+          ARTIFACT_ID="$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.artifactId)"
+          GROUP_PATH="$(printf '%s' "$GROUP_ID" | tr '.' '/')"
+          ARTIFACT_URL="https://repo.maven.apache.org/maven2/${GROUP_PATH}/${ARTIFACT_ID}/${RELEASE_VERSION}/${ARTIFACT_ID}-${RELEASE_VERSION}.pom"
+          if curl --silent --fail --head "$ARTIFACT_URL" >/dev/null; then
+            echo "Release ${GROUP_ID}:${ARTIFACT_ID}:${RELEASE_VERSION} is already published on Maven Central. Rerun the Release workflow for tag ${TAG} only if you need to recover post-release steps."
+            exit 1
+          fi
 
       - name: Set release version
         run: |
