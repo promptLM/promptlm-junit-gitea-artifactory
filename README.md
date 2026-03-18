@@ -89,6 +89,22 @@ will also provision those same `ARTIFACTORY_*` values as default repository Acti
 variables for that repo. Existing values are left alone, so explicit
 `gitea.ensureRepositoryActionsVariable(...)` calls can still override or remove them.
 
+## Checkout overrides
+
+`REPO_REMOTE_URL`, `REPO_REMOTE_USERNAME`, and `REPO_REMOTE_TOKEN` are optional
+workflow checkout overrides for nonstandard runner/network topologies. They are
+not baseline harness defaults, and normal GitHub or Gitea workflows should use
+the platform context instead, for example `${{ github.server_url }}`,
+`${{ github.repository }}`, and `${{ github.token }}`.
+
+If a workflow does need explicit checkout overrides, opt in explicitly:
+
+```java
+Map<String, String> overrides = gitea.workflowCheckoutOverrides("owner", "demo");
+overrides.forEach((key, value) ->
+        gitea.ensureRepositoryActionsVariable("owner", "demo", key, value));
+```
+
 ## Gitea Actions support
 
 `GiteaContainer` exposes a lightweight Actions facade for inspecting workflow runs and logs:

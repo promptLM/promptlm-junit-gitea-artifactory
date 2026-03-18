@@ -37,10 +37,13 @@ class GiteaTestExtensionUnitTest {
     }
 
     @Test
-    void startsContainerAndSetsPropertiesForAnnotatedClass() {
+    void startsContainerForAnnotatedClass() {
         ExtensionContext context = extensionContextFor(AnnotatedWithReposTest.class);
         ExtensionContext.Store store = mock(ExtensionContext.Store.class);
         when(context.getStore(any())).thenReturn(store);
+        System.setProperty(GiteaEnvironmentProperties.REPO_REMOTE_URL, "http://preconfigured/repo.git");
+        System.setProperty(GiteaEnvironmentProperties.REPO_REMOTE_USERNAME, "pre-user");
+        System.setProperty(GiteaEnvironmentProperties.REPO_REMOTE_TOKEN, "pre-token");
 
         try (MockedConstruction<GiteaContainer> construction = mockConstruction(GiteaContainer.class, (mock, c) -> {
             when(mock.withAdminUser(anyString(), anyString(), anyString())).thenReturn(mock);
@@ -57,9 +60,12 @@ class GiteaTestExtensionUnitTest {
             verify(container).createRepository("repo-a");
             verify(container).createRepository("repo-b");
             verify(store).put(containerKey(AnnotatedWithReposTest.class), container);
-            assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_URL)).isEqualTo("http://localhost:39999/api/v1");
-            assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_USERNAME)).isEqualTo("testuser");
-            assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_TOKEN)).isEqualTo("token-123");
+            assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_URL))
+                    .isEqualTo("http://preconfigured/repo.git");
+            assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_USERNAME))
+                    .isEqualTo("pre-user");
+            assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_TOKEN))
+                    .isEqualTo("pre-token");
         }
     }
 
@@ -85,47 +91,16 @@ class GiteaTestExtensionUnitTest {
     }
 
     @Test
-    void stopsContainerAndClearsPropertiesInAfterAll() {
+    void stopsContainerInAfterAll() {
         ExtensionContext context = extensionContextFor(AnnotatedDefaultTest.class);
         ExtensionContext.Store store = mock(ExtensionContext.Store.class);
         GiteaContainer container = mock(GiteaContainer.class);
         when(context.getStore(any())).thenReturn(store);
         when(store.get(containerKey(AnnotatedDefaultTest.class), GiteaContainer.class)).thenReturn(container);
-        when(store.get(propertiesKey(AnnotatedDefaultTest.class), java.util.Map.class)).thenReturn(java.util.Map.of());
-
-        System.setProperty(GiteaEnvironmentProperties.REPO_REMOTE_URL, "foo");
-        System.setProperty(GiteaEnvironmentProperties.REPO_REMOTE_USERNAME, "bar");
-        System.setProperty(GiteaEnvironmentProperties.REPO_REMOTE_TOKEN, "baz");
 
         extension.afterAll(context);
 
         verify(container).stop();
-        assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_URL)).isNull();
-        assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_USERNAME)).isNull();
-        assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_TOKEN)).isNull();
-    }
-
-    @Test
-    void restoresPreviousPropertiesInAfterAll() {
-        ExtensionContext context = extensionContextFor(AnnotatedDefaultTest.class);
-        ExtensionContext.Store store = mock(ExtensionContext.Store.class);
-        GiteaContainer container = mock(GiteaContainer.class);
-        when(context.getStore(any())).thenReturn(store);
-        when(store.get(containerKey(AnnotatedDefaultTest.class), GiteaContainer.class)).thenReturn(container);
-        when(store.get(propertiesKey(AnnotatedDefaultTest.class), java.util.Map.class)).thenReturn(java.util.Map.of(
-                GiteaEnvironmentProperties.REPO_REMOTE_URL, "http://prev/api",
-                GiteaEnvironmentProperties.REPO_REMOTE_USERNAME, "prev-user",
-                GiteaEnvironmentProperties.REPO_REMOTE_TOKEN, "prev-token"));
-
-        System.setProperty(GiteaEnvironmentProperties.REPO_REMOTE_URL, "new-url");
-        System.setProperty(GiteaEnvironmentProperties.REPO_REMOTE_USERNAME, "new-user");
-        System.setProperty(GiteaEnvironmentProperties.REPO_REMOTE_TOKEN, "new-token");
-
-        extension.afterAll(context);
-
-        assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_URL)).isEqualTo("http://prev/api");
-        assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_USERNAME)).isEqualTo("prev-user");
-        assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_TOKEN)).isEqualTo("prev-token");
     }
 
     @Test
@@ -243,10 +218,6 @@ class GiteaTestExtensionUnitTest {
 
     private static String containerKey(Class<?> testClass) {
         return "gitea-container:" + testClass.getName();
-    }
-
-    private static String propertiesKey(Class<?> testClass) {
-        return "previous-repo-properties:" + testClass.getName();
     }
 
     @WithGitea

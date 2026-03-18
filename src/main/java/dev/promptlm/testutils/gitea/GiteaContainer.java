@@ -51,6 +51,7 @@ import java.util.stream.Collectors;
 public class GiteaContainer {
 
     private static final Logger logger = LoggerFactory.getLogger(GiteaContainer.class);
+    private static final String RUNNER_ACCESSIBLE_HOST = "localhost.localtest.me";
     private static final String GITEA_IMAGE = resolveImage("gitea.image", "GITEA_IMAGE",
             "docker.gitea.com/gitea:1.25.4-rootless");
     private static final int GITEA_PORT = 3000;
@@ -128,10 +129,7 @@ public class GiteaContainer {
      */
     public GiteaContainer() {
         this.fixedHttpPort = reservePort();
-        // Use a host alias that resolves to localhost on the host machine, while we
-        // remap it to host-gateway inside Actions job containers.
-        String internalRootHost = "localhost.localtest.me";
-        String rootUrl = "http://" + internalRootHost + ":" + fixedHttpPort + "/";
+        String rootUrl = "http://" + RUNNER_ACCESSIBLE_HOST + ":" + fixedHttpPort + "/";
 
         this.container = new FixedPortGenericContainer<>(GITEA_IMAGE)
                 .withFixedExposedPort(fixedHttpPort, GITEA_PORT)
@@ -139,8 +137,8 @@ public class GiteaContainer {
                 .withEnv("GITEA__database__DB_TYPE", "sqlite3")
                 .withEnv("GITEA__database__PATH", "/var/lib/gitea/data/gitea.db")
                 .withEnv("GITEA__security__INSTALL_LOCK", "true")
-                .withEnv("GITEA__server__DOMAIN", internalRootHost)
-                .withEnv("GITEA__server__SSH_DOMAIN", internalRootHost)
+                .withEnv("GITEA__server__DOMAIN", RUNNER_ACCESSIBLE_HOST)
+                .withEnv("GITEA__server__SSH_DOMAIN", RUNNER_ACCESSIBLE_HOST)
                 .withEnv("GITEA__server__ROOT_URL", rootUrl)
                 .withEnv("GITEA__server__DISABLE_SSH", "true")
                 .withEnv("GITEA__server__START_SSH_SERVER", "false")
@@ -462,7 +460,7 @@ public class GiteaContainer {
     }
 
     private String buildInternalInstanceUrl() {
-        return "http://localhost.localtest.me:" + fixedHttpPort;
+        return "http://" + RUNNER_ACCESSIBLE_HOST + ":" + fixedHttpPort;
     }
 
     private void logRunnerDiagnostics(String reason) {
@@ -1046,6 +1044,26 @@ public class GiteaContainer {
         provisionDefaultArtifactoryActionsVariables(repoOwner, repoName);
     }
 
+    /**
+     * Return optional repository Actions variables that override workflow checkout.
+     * <p>
+     * Normal Gitea or GitHub workflows should rely on platform values such as
+     * {@code github.server_url}, {@code github.repository}, and {@code github.token}.
+     * Use these overrides only when a workflow job must clone through a nonstandard
+     * runner-visible URL or explicit credentials.
+     *
+     * @param owner repository owner
+     * @param repositoryName repository name
+     * @return mutable map of checkout override variables
+     */
+    public Map<String, String> workflowCheckoutOverrides(String owner, String repositoryName) {
+        Map<String, String> overrides = new LinkedHashMap<>();
+        overrides.put(GiteaEnvironmentProperties.REPO_REMOTE_URL, buildRunnerAccessibleCloneUrl(owner, repositoryName));
+        overrides.put(GiteaEnvironmentProperties.REPO_REMOTE_USERNAME, getAdminUsername());
+        overrides.put(GiteaEnvironmentProperties.REPO_REMOTE_TOKEN, getAdminToken());
+        return overrides;
+    }
+
     private void provisionDefaultArtifactoryActionsVariables(String repoOwner, String repoName) {
         Map<String, String> defaultVariables = defaultArtifactoryActionsVariablesFromSystemProperties();
         if (defaultVariables.isEmpty()) {
@@ -1243,9 +1261,7 @@ public class GiteaContainer {
 
     /**
      * Build a clone URL that is reachable from within the Actions runner network.
-     * The runner communicates with the Gitea container via the {@code gitea-actions}
-     * network alias, so this helper produces a URL that workflows can use when
-     * pushing artifacts back to the repository.
+     * The URL is exposed through the same host alias used by Actions job containers.
      *
      * @param owner repository owner
      * @param repositoryName repository name
@@ -1258,7 +1274,7 @@ public class GiteaContainer {
         if (repositoryName == null || repositoryName.isBlank()) {
             throw new IllegalArgumentException("repositoryName must not be blank");
         }
-        return "http://gitea-actions:" + GITEA_PORT + "/" + owner + "/" + repositoryName + ".git";
+        return "http://" + RUNNER_ACCESSIBLE_HOST + ":" + fixedHttpPort + "/" + owner + "/" + repositoryName + ".git";
     }
 
     private void waitForRunnerRegistration() {
