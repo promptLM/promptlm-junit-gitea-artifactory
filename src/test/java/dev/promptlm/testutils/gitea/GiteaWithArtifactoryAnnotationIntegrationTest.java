@@ -26,8 +26,9 @@ class GiteaWithArtifactoryAnnotationIntegrationTest {
     @DisplayName("Artifactory should configure the standard Actions variable contract in Gitea")
     void shouldConfigureRepositoryActionsVariables(GiteaContainer gitea, ArtifactoryContainer artifactory) {
         String repoOwner = gitea.getAdminUsername();
-        String repoName = "integration-repo";
+        String repoName = "manual-artifactory-vars-repo";
 
+        gitea.createRepository(repoName);
         gitea.waitForRepository(repoName);
         artifactory.configureRepositoryActionsVariables(gitea, repoOwner, repoName);
 
@@ -43,5 +44,48 @@ class GiteaWithArtifactoryAnnotationIntegrationTest {
         assertThat(gitea.readRepositoryActionsVariable(repoOwner, repoName,
                 ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD))
                 .isEqualTo(artifactory.getDeployerPassword());
+    }
+
+    @Test
+    @DisplayName("Enabling repository Actions should provision default Artifactory workflow variables")
+    void shouldProvisionDefaultArtifactoryVariablesWhenEnablingActions(GiteaContainer gitea,
+                                                                       ArtifactoryContainer artifactory) {
+        String repoOwner = gitea.getAdminUsername();
+        String repoName = "default-artifactory-vars-repo";
+
+        gitea.createRepository(repoName);
+        gitea.waitForRepository(repoName);
+        gitea.enableRepositoryActions(repoOwner, repoName);
+
+        assertThat(gitea.readRepositoryActionsVariable(repoOwner, repoName,
+                ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_URL))
+                .isEqualTo(artifactory.getRunnerAccessibleApiUrl());
+        assertThat(gitea.readRepositoryActionsVariable(repoOwner, repoName,
+                ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY))
+                .isEqualTo(artifactory.getMavenRepositoryName());
+        assertThat(gitea.readRepositoryActionsVariable(repoOwner, repoName,
+                ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_USERNAME))
+                .isEqualTo(artifactory.getDeployerUsername());
+        assertThat(gitea.readRepositoryActionsVariable(repoOwner, repoName,
+                ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD))
+                .isEqualTo(artifactory.getDeployerPassword());
+    }
+
+    @Test
+    @DisplayName("Explicit Artifactory workflow variable overrides should win over defaults")
+    void explicitOverridesShouldWinOverDefaultProvisioning(GiteaContainer gitea) {
+        String repoOwner = gitea.getAdminUsername();
+        String repoName = "override-artifactory-vars-repo";
+
+        gitea.createRepository(repoName);
+        gitea.waitForRepository(repoName);
+        gitea.enableRepositoryActions(repoOwner, repoName);
+        gitea.ensureRepositoryActionsVariable(repoOwner, repoName,
+                ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY, "custom-release-local");
+        gitea.enableRepositoryActions(repoOwner, repoName);
+
+        assertThat(gitea.readRepositoryActionsVariable(repoOwner, repoName,
+                ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY))
+                .isEqualTo("custom-release-local");
     }
 }

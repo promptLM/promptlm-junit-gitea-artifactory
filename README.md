@@ -84,6 +84,11 @@ artifactory.configureRepositoryActionsVariables(gitea, gitea.getAdminUsername(),
 The existing `artifactory.*` system properties remain available for host-side
 test code that talks to Artifactory directly.
 
+When both harnesses are active, calling `gitea.enableRepositoryActions(owner, repo)`
+will also provision those same `ARTIFACTORY_*` values as default repository Actions
+variables for that repo. Existing values are left alone, so explicit
+`gitea.ensureRepositoryActionsVariable(...)` calls can still override or remove them.
+
 ## Gitea Actions support
 
 `GiteaContainer` exposes a lightweight Actions facade for inspecting workflow runs and logs:

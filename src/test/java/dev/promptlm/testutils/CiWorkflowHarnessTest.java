@@ -53,7 +53,6 @@ class CiWorkflowHarnessTest {
 
         String version = "1.0.0-" + System.currentTimeMillis();
         String owner = gitea.getAdminUsername();
-        String deployRepositoryUrl = artifactory.getRunnerAccessibleApiUrl() + "/" + artifactory.getMavenRepositoryName();
         String runnerCloneUrl = "http://localhost.localtest.me:%d/%s/%s.git".formatted(
                 URI.create(gitea.getWebUrl()).getPort(),
                 owner,
@@ -65,7 +64,7 @@ class CiWorkflowHarnessTest {
 
         Path repositoryDir = tempDir.resolve(REPO_NAME);
         Files.createDirectories(repositoryDir);
-        writeWorkflowProject(repositoryDir, version, artifactory, deployRepositoryUrl, runnerCloneUrl, gitea);
+        writeWorkflowProject(repositoryDir, version, runnerCloneUrl, gitea);
 
         String commitSha = seedRepository(repositoryDir, gitea, owner);
 
@@ -146,8 +145,6 @@ class CiWorkflowHarnessTest {
 
     private void writeWorkflowProject(Path repositoryDir,
                                       String version,
-                                      ArtifactoryContainer artifactory,
-                                      String deployRepositoryUrl,
                                       String runnerCloneUrl,
                                       GiteaContainer gitea) throws IOException {
         Files.createDirectories(repositoryDir.resolve(".gitea/workflows"));
@@ -157,12 +154,9 @@ class CiWorkflowHarnessTest {
                 "GROUP_ID", GROUP_ID,
                 "ARTIFACT_ID", ARTIFACT_ID,
                 "VERSION", version,
-                "DEPLOY_REPOSITORY_URL", deployRepositoryUrl,
                 "REPO_CLONE_URL", runnerCloneUrl,
                 "REPO_CLONE_USERNAME", gitea.getAdminUsername(),
-                "REPO_CLONE_TOKEN", gitea.getAdminToken(),
-                "ARTIFACTORY_USERNAME", artifactory.getDeployerUsername(),
-                "ARTIFACTORY_PASSWORD", artifactory.getDeployerPassword());
+                "REPO_CLONE_TOKEN", gitea.getAdminToken());
 
         writeTemplate("dev/promptlm/testutils/ciworkflow/pom.xml.template",
                 repositoryDir.resolve("pom.xml"),
