@@ -13,6 +13,10 @@ on:
         description: "Milestone title (defaults to version without v)"
         required: false
 
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -115,10 +119,27 @@ jobs:
             exit 1
           fi
 
+      - name: Check Maven Central for an existing release
+        id: central
+        run: |
+          set -euo pipefail
+          GROUP_ID="$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.groupId)"
+          ARTIFACT_ID="$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.artifactId)"
+          VERSION="${{ steps.release.outputs.version }}"
+          GROUP_PATH="$(printf '%s' "$GROUP_ID" | tr '.' '/')"
+          ARTIFACT_URL="https://repo.maven.apache.org/maven2/${GROUP_PATH}/${ARTIFACT_ID}/${VERSION}/${ARTIFACT_ID}-${VERSION}.pom"
+          if curl --silent --fail --head "$ARTIFACT_URL" >/dev/null; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} is already published on Maven Central; skipping deploy."
+            exit 0
+          fi
+          echo "published=false" >> "$GITHUB_OUTPUT"
+
       - name: Build and test
         run: ./mvnw -B clean verify
 
       - name: Deploy to Maven Central (Central Portal)
+        if: ${{ steps.central.outputs.published != 'true' }}
         run: ./mvnw -B -Prelease -DskipTests -Dgpg.passphrase="${{ secrets.GPG_PASSPHRASE }}" deploy
 
       - name: Resolve next development version
