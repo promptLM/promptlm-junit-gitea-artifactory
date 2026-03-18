@@ -53,6 +53,37 @@ class IntegrationTest {
 }
 ```
 
+## Artifactory workflow contract
+
+When `@WithArtifactory` starts the harness, it publishes a default workflow-facing
+contract for downstream Actions-based tests:
+
+- `ARTIFACTORY_URL`
+- `ARTIFACTORY_REPOSITORY`
+- `ARTIFACTORY_USERNAME`
+- `ARTIFACTORY_PASSWORD`
+
+These values are available as system properties under the same names, and
+`ArtifactoryContainer` exposes helpers to use them directly:
+
+```java
+Map<String, String> variables = artifactory.standardActionsVariables();
+artifactory.configureRepositoryActionsVariables(gitea, gitea.getAdminUsername(), "demo");
+```
+
+`ARTIFACTORY_URL` defaults to the runner-accessible API URL so Gitea Actions job
+containers can reach the harness. If you need custom values, start from the
+default map, override the keys you want, and apply that map explicitly:
+
+```java
+Map<String, String> variables = artifactory.standardActionsVariables();
+variables.put(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_URL, artifactory.getApiUrl());
+artifactory.configureRepositoryActionsVariables(gitea, gitea.getAdminUsername(), "demo", variables);
+```
+
+The existing `artifactory.*` system properties remain available for host-side
+test code that talks to Artifactory directly.
+
 ## Gitea Actions support
 
 `GiteaContainer` exposes a lightweight Actions facade for inspecting workflow runs and logs:

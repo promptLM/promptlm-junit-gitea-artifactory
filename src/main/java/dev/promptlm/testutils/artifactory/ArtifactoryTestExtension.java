@@ -19,31 +19,29 @@ class ArtifactoryTestExtension implements BeforeAllCallback, AfterAllCallback, P
     private static final Logger logger = LoggerFactory.getLogger(ArtifactoryTestExtension.class);
     private static final ExtensionContext.Namespace NAMESPACE = ExtensionContext.Namespace.create("promptlm", "artifactory");
     private static final String STORE_KEY = "container";
-    private static final String REPO_REMOTE_URL = "REPO_REMOTE_URL";
-    private static final String REPO_REMOTE_USERNAME = "REPO_REMOTE_USERNAME";
-    private static final String REPO_REMOTE_TOKEN = "REPO_REMOTE_TOKEN";
-    private static final String ARTIFACTORY_URL = "artifactory.url";
-    private static final String ARTIFACTORY_MAVEN_REPO_URL = "artifactory.maven.repository.url";
-    private static final String ARTIFACTORY_ADMIN_USERNAME = "artifactory.admin.username";
-    private static final String ARTIFACTORY_ADMIN_PASSWORD = "artifactory.admin.password";
-    private static final String ARTIFACTORY_DEPLOYER_USERNAME = "artifactory.deployer.username";
-    private static final String ARTIFACTORY_DEPLOYER_PASSWORD = "artifactory.deployer.password";
-    private static final String ARTIFACTORY_MAVEN_REPO_NAME = "artifactory.maven.repository.name";
-    private static final String ARTIFACTORY_INTERNAL_API_URL = "artifactory.internal.api.url";
-    private static final String ARTIFACTORY_RUNNER_API_URL = "artifactory.runner.api.url";
+    private static final String ARTIFACTORY_PROPERTY_URL = "artifactory.url";
+    private static final String ARTIFACTORY_PROPERTY_MAVEN_REPO_URL = "artifactory.maven.repository.url";
+    private static final String ARTIFACTORY_PROPERTY_ADMIN_USERNAME = "artifactory.admin.username";
+    private static final String ARTIFACTORY_PROPERTY_ADMIN_PASSWORD = "artifactory.admin.password";
+    private static final String ARTIFACTORY_PROPERTY_DEPLOYER_USERNAME = "artifactory.deployer.username";
+    private static final String ARTIFACTORY_PROPERTY_DEPLOYER_PASSWORD = "artifactory.deployer.password";
+    private static final String ARTIFACTORY_PROPERTY_MAVEN_REPO_NAME = "artifactory.maven.repository.name";
+    private static final String ARTIFACTORY_PROPERTY_INTERNAL_API_URL = "artifactory.internal.api.url";
+    private static final String ARTIFACTORY_PROPERTY_RUNNER_API_URL = "artifactory.runner.api.url";
     private static final String[] PROPERTY_KEYS = {
-            REPO_REMOTE_URL,
-            REPO_REMOTE_USERNAME,
-            REPO_REMOTE_TOKEN,
-            ARTIFACTORY_URL,
-            ARTIFACTORY_MAVEN_REPO_URL,
-            ARTIFACTORY_ADMIN_USERNAME,
-            ARTIFACTORY_ADMIN_PASSWORD,
-            ARTIFACTORY_DEPLOYER_USERNAME,
-            ARTIFACTORY_DEPLOYER_PASSWORD,
-            ARTIFACTORY_MAVEN_REPO_NAME,
-            ARTIFACTORY_INTERNAL_API_URL,
-            ARTIFACTORY_RUNNER_API_URL
+            ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_URL,
+            ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY,
+            ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_USERNAME,
+            ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD,
+            ARTIFACTORY_PROPERTY_URL,
+            ARTIFACTORY_PROPERTY_MAVEN_REPO_URL,
+            ARTIFACTORY_PROPERTY_ADMIN_USERNAME,
+            ARTIFACTORY_PROPERTY_ADMIN_PASSWORD,
+            ARTIFACTORY_PROPERTY_DEPLOYER_USERNAME,
+            ARTIFACTORY_PROPERTY_DEPLOYER_PASSWORD,
+            ARTIFACTORY_PROPERTY_MAVEN_REPO_NAME,
+            ARTIFACTORY_PROPERTY_INTERNAL_API_URL,
+            ARTIFACTORY_PROPERTY_RUNNER_API_URL
     };
 
     @Override
@@ -154,19 +152,17 @@ class ArtifactoryTestExtension implements BeforeAllCallback, AfterAllCallback, P
     }
 
     private void configureSystemProperties(ArtifactoryContainer container) {
-        setProperty(REPO_REMOTE_URL, container.getMavenRepositoryUrl());
-        setProperty(REPO_REMOTE_USERNAME, container.getDeployerUsername());
-        setProperty(REPO_REMOTE_TOKEN, container.getDeployerPassword());
+        container.standardActionsVariables().forEach(this::setProperty);
 
-        setProperty(ARTIFACTORY_URL, container.getApiUrl());
-        setProperty(ARTIFACTORY_MAVEN_REPO_URL, container.getMavenRepositoryUrl());
-        setProperty(ARTIFACTORY_ADMIN_USERNAME, container.getAdminUsername());
-        setProperty(ARTIFACTORY_ADMIN_PASSWORD, container.getAdminPassword());
-        setProperty(ARTIFACTORY_DEPLOYER_USERNAME, container.getDeployerUsername());
-        setProperty(ARTIFACTORY_DEPLOYER_PASSWORD, container.getDeployerPassword());
-        setProperty(ARTIFACTORY_MAVEN_REPO_NAME, container.getMavenRepositoryName());
-        setProperty(ARTIFACTORY_INTERNAL_API_URL, container.getInternalApiUrl());
-        setProperty(ARTIFACTORY_RUNNER_API_URL, container.getRunnerAccessibleApiUrl());
+        setProperty(ARTIFACTORY_PROPERTY_URL, container.getApiUrl());
+        setProperty(ARTIFACTORY_PROPERTY_MAVEN_REPO_URL, container.getMavenRepositoryUrl());
+        setProperty(ARTIFACTORY_PROPERTY_ADMIN_USERNAME, container.getAdminUsername());
+        setProperty(ARTIFACTORY_PROPERTY_ADMIN_PASSWORD, container.getAdminPassword());
+        setProperty(ARTIFACTORY_PROPERTY_DEPLOYER_USERNAME, container.getDeployerUsername());
+        setProperty(ARTIFACTORY_PROPERTY_DEPLOYER_PASSWORD, container.getDeployerPassword());
+        setProperty(ARTIFACTORY_PROPERTY_MAVEN_REPO_NAME, container.getMavenRepositoryName());
+        setProperty(ARTIFACTORY_PROPERTY_INTERNAL_API_URL, container.getInternalApiUrl());
+        setProperty(ARTIFACTORY_PROPERTY_RUNNER_API_URL, container.getRunnerAccessibleApiUrl());
     }
 
     private void clearSystemProperties() {

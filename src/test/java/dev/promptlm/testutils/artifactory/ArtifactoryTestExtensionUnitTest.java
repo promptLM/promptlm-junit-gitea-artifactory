@@ -23,9 +23,10 @@ class ArtifactoryTestExtensionUnitTest {
 
     @AfterEach
     void clearProperties() {
-        System.clearProperty("REPO_REMOTE_URL");
-        System.clearProperty("REPO_REMOTE_USERNAME");
-        System.clearProperty("REPO_REMOTE_TOKEN");
+        System.clearProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_URL);
+        System.clearProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY);
+        System.clearProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_USERNAME);
+        System.clearProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD);
         System.clearProperty("artifactory.url");
         System.clearProperty("artifactory.maven.repository.url");
         System.clearProperty("artifactory.admin.username");
@@ -48,6 +49,7 @@ class ArtifactoryTestExtensionUnitTest {
             when(mock.withDeployerUser(any(), any(), any())).thenReturn(mock);
             when(mock.withMavenRepository(any())).thenReturn(mock);
             when(mock.withNetworkAlias(any())).thenReturn(mock);
+            when(mock.standardActionsVariables()).thenCallRealMethod();
             when(mock.getMavenRepositoryUrl()).thenReturn("http://localhost:8081/artifactory/libs-release-local");
             when(mock.getDeployerUsername()).thenReturn("ci-deployer");
             when(mock.getDeployerPassword()).thenReturn("ci-deployer-password");
@@ -63,10 +65,21 @@ class ArtifactoryTestExtensionUnitTest {
             ArtifactoryContainer container = construction.constructed().get(0);
             verify(container).start();
 
+            assertThat(System.getProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_URL))
+                    .isEqualTo("http://host.testcontainers.internal:8081/artifactory");
+            assertThat(System.getProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY))
+                    .isEqualTo("libs-release-local");
+            assertThat(System.getProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_USERNAME))
+                    .isEqualTo("ci-deployer");
+            assertThat(System.getProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD))
+                    .isEqualTo("ci-deployer-password");
             assertThat(System.getProperty("artifactory.url")).isEqualTo("http://localhost:8081/artifactory");
             assertThat(System.getProperty("artifactory.maven.repository.url")).isEqualTo("http://localhost:8081/artifactory/libs-release-local");
             assertThat(System.getProperty("artifactory.deployer.username")).isEqualTo("ci-deployer");
             assertThat(System.getProperty("artifactory.deployer.password")).isEqualTo("ci-deployer-password");
+            assertThat(System.getProperty("REPO_REMOTE_URL")).isNull();
+            assertThat(System.getProperty("REPO_REMOTE_USERNAME")).isNull();
+            assertThat(System.getProperty("REPO_REMOTE_TOKEN")).isNull();
         }
     }
 
@@ -111,6 +124,7 @@ class ArtifactoryTestExtensionUnitTest {
     }
 
     private static void stubContainerDefaults(ArtifactoryContainer container) {
+        when(container.standardActionsVariables()).thenCallRealMethod();
         when(container.getMavenRepositoryUrl()).thenReturn("http://localhost:8081/artifactory/libs-release-local");
         when(container.getDeployerUsername()).thenReturn("ci-deployer");
         when(container.getDeployerPassword()).thenReturn("ci-deployer-password");
