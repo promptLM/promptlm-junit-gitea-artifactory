@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Field;
 import java.lang.reflect.Parameter;
 import java.net.URI;
-import java.util.Map;
 
 /**
  * JUnit 5 extension that manages Gitea container lifecycle for tests annotated with @WithGitea
@@ -18,7 +17,6 @@ class GiteaTestExtension implements BeforeAllCallback, AfterAllCallback, Paramet
     private static final Logger logger = LoggerFactory.getLogger(GiteaTestExtension.class);
     private static final ExtensionContext.Namespace NAMESPACE = ExtensionContext.Namespace.create("gitea-test");
     private static final String KEY_CONTAINER = "gitea-container";
-    private static final String KEY_PREVIOUS_PROPERTIES = "previous-repo-properties";
     
     @Override
     public void beforeAll(ExtensionContext context) {
@@ -34,8 +32,6 @@ class GiteaTestExtension implements BeforeAllCallback, AfterAllCallback, Paramet
             logger.info("Stopping Gitea container for test class: {}", context.getDisplayName());
             giteaContainer.stop();
         }
-        Map<String, String> previous = store.get(propertiesKey(context), Map.class);
-        GiteaEnvironmentProperties.restore(previous == null ? Map.of() : previous);
     }
     
     @Override
@@ -117,8 +113,6 @@ class GiteaTestExtension implements BeforeAllCallback, AfterAllCallback, Paramet
         }
 
         store.put(containerKey, giteaContainer);
-        store.put(propertiesKey(context), GiteaEnvironmentProperties.snapshot());
-        GiteaEnvironmentProperties.applyFrom(giteaContainer);
 
         logger.info("Gitea container started successfully at: {}", giteaContainer.getWebUrl());
         return giteaContainer;
@@ -199,10 +193,6 @@ class GiteaTestExtension implements BeforeAllCallback, AfterAllCallback, Paramet
 
     private String containerKey(ExtensionContext context) {
         return KEY_CONTAINER + ":" + testClassName(context);
-    }
-
-    private String propertiesKey(ExtensionContext context) {
-        return KEY_PREVIOUS_PROPERTIES + ":" + testClassName(context);
     }
 
     private String testClassName(ExtensionContext context) {

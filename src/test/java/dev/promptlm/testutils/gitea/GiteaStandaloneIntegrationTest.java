@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -11,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GiteaStandaloneIntegrationTest {
 
     @Test
-    @DisplayName("Gitea should start without Actions runner and expose injection + system properties")
+    @DisplayName("Gitea should start without Actions runner and expose explicit checkout overrides")
     void shouldStartGiteaAndExposeApi(@Gitea GiteaContainer gitea,
                                       @GiteaUrl String webUrl,
                                       @GiteaUrl(api = true) URI apiUrl) {
@@ -22,8 +23,12 @@ class GiteaStandaloneIntegrationTest {
         assertThat(gitea.getAdminToken()).isNotBlank();
         assertThat(gitea.repositoryExists("standalone-repo")).isTrue();
 
-        assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_URL)).isEqualTo(gitea.getApiUrl());
-        assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_USERNAME)).isEqualTo(gitea.getAdminUsername());
-        assertThat(System.getProperty(GiteaEnvironmentProperties.REPO_REMOTE_TOKEN)).isEqualTo(gitea.getAdminToken());
+        Map<String, String> overrides = gitea.workflowCheckoutOverrides(gitea.getAdminUsername(), "standalone-repo");
+        assertThat(overrides)
+                .containsEntry(GiteaEnvironmentProperties.REPO_REMOTE_URL,
+                        "http://localhost.localtest.me:" + URI.create(gitea.getWebUrl()).getPort() + "/"
+                                + gitea.getAdminUsername() + "/standalone-repo.git")
+                .containsEntry(GiteaEnvironmentProperties.REPO_REMOTE_USERNAME, gitea.getAdminUsername())
+                .containsEntry(GiteaEnvironmentProperties.REPO_REMOTE_TOKEN, gitea.getAdminToken());
     }
 }
