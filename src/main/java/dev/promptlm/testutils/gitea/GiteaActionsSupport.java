@@ -62,6 +62,24 @@ final class GiteaActionsSupport {
         }
     }
 
+    void ensureRepositoryActionsVariableIfAbsent(String repoOwner, String repoName, String variableName, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+
+        String variablesBase = actionsVariablesBase(repoOwner, repoName);
+        Duration timeout = ACTION_VARIABLE_RETRY_DELAY.multipliedBy(ACTION_VARIABLE_CREATE_ATTEMPTS);
+        try {
+            Awaitility.await("actions variable " + variableName + " to exist without overriding explicit values")
+                    .pollInterval(ACTION_VARIABLE_RETRY_DELAY)
+                    .atMost(timeout)
+                    .ignoreExceptions()
+                    .until(() -> ensureRepositoryActionsVariableIfAbsentAttempt(variablesBase, variableName, value));
+        } catch (ConditionTimeoutException e) {
+            throw new IllegalStateException("Timed out configuring default repository variable '" + variableName + "'", e);
+        }
+    }
+
 
     private void ensureRepositoryActionsVariableAbsent(String variablesBase, String variableName) {
         Duration timeout = ACTION_VARIABLE_RETRY_DELAY.multipliedBy(ACTION_VARIABLE_CREATE_ATTEMPTS);
@@ -85,6 +103,17 @@ final class GiteaActionsSupport {
             return deleteActionsVariable(variablesBase, variableName);
         }
         throw new IllegalStateException("Unexpected status when probing repository variable '" + variableName + "': HTTP " + status);
+    }
+
+    private boolean ensureRepositoryActionsVariableIfAbsentAttempt(String variablesBase, String variableName, String value) {
+        int status = getActionsVariableStatus(variablesBase, variableName);
+        if (status == 200) {
+            return true;
+        }
+        if (status == 404 || status == 405 || status == 503) {
+            return createActionsVariable(variablesBase, variableName, value);
+        }
+        throw new IllegalStateException("Unexpected status when probing default repository variable '" + variableName + "': HTTP " + status);
     }
 
     private boolean deleteActionsVariable(String variablesBase, String variableName) {

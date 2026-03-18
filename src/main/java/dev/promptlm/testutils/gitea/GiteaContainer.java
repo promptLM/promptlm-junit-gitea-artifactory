@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.model.Frame;
+import dev.promptlm.testutils.artifactory.ArtifactoryContainer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.awaitility.Awaitility;
@@ -30,6 +31,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -226,6 +228,18 @@ public class GiteaContainer {
      */
     public void ensureRepositoryActionsVariable(String repoOwner, String repoName, String variableName, String value) {
         actionsSupport.ensureRepositoryActionsVariable(repoOwner, repoName, variableName, value);
+    }
+
+    /**
+     * Create a repository Actions variable only when it does not already exist.
+     *
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @param variableName variable key
+     * @param value desired default value
+     */
+    public void ensureRepositoryActionsVariableIfAbsent(String repoOwner, String repoName, String variableName, String value) {
+        actionsSupport.ensureRepositoryActionsVariableIfAbsent(repoOwner, repoName, variableName, value);
     }
 
     /**
@@ -1029,6 +1043,35 @@ public class GiteaContainer {
      */
     public void enableRepositoryActions(String repoOwner, String repoName) {
         actionsSupport.enableRepositoryActions(repoOwner, repoName);
+        provisionDefaultArtifactoryActionsVariables(repoOwner, repoName);
+    }
+
+    private void provisionDefaultArtifactoryActionsVariables(String repoOwner, String repoName) {
+        Map<String, String> defaultVariables = defaultArtifactoryActionsVariablesFromSystemProperties();
+        if (defaultVariables.isEmpty()) {
+            return;
+        }
+
+        defaultVariables.forEach((key, value) ->
+                ensureRepositoryActionsVariableIfAbsent(repoOwner, repoName, key, value));
+        logger.info("Provisioned {} default Artifactory Actions variable(s) for {}/{}",
+                defaultVariables.size(), repoOwner, repoName);
+    }
+
+    private Map<String, String> defaultArtifactoryActionsVariablesFromSystemProperties() {
+        Map<String, String> variables = new LinkedHashMap<>();
+        putSystemPropertyIfPresent(variables, ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_URL);
+        putSystemPropertyIfPresent(variables, ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY);
+        putSystemPropertyIfPresent(variables, ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_USERNAME);
+        putSystemPropertyIfPresent(variables, ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD);
+        return variables;
+    }
+
+    private void putSystemPropertyIfPresent(Map<String, String> variables, String propertyName) {
+        String value = System.getProperty(propertyName);
+        if (!isBlank(value)) {
+            variables.put(propertyName, value);
+        }
     }
 
     /**
