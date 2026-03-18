@@ -2,6 +2,7 @@ package dev.promptlm.testutils.artifactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.promptlm.testutils.gitea.GiteaContainer;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.slf4j.Logger;
@@ -20,6 +21,9 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * Testcontainers wrapper for JFrog Artifactory OSS that provides easy setup and management for tests.
@@ -32,17 +36,33 @@ import java.util.Base64;
  * - Spring Boot integration via system properties
  */
 public class ArtifactoryContainer {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(ArtifactoryContainer.class);
     private static final String ARTIFACTORY_IMAGE = "releases-docker.jfrog.io/jfrog/artifactory-oss:7.77.5";
     private static final int ARTIFACTORY_PORT = 8081;
     private static final int ARTIFACTORY_ACCESS_PORT = 8082;
-    
+    /**
+     * Standard Gitea Actions variable name for the runner-accessible Artifactory API base URL.
+     */
+    public static final String ACTIONS_VARIABLE_ARTIFACTORY_URL = "ARTIFACTORY_URL";
+    /**
+     * Standard Gitea Actions variable name for the Maven repository key.
+     */
+    public static final String ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY = "ARTIFACTORY_REPOSITORY";
+    /**
+     * Standard Gitea Actions variable name for the deployer username.
+     */
+    public static final String ACTIONS_VARIABLE_ARTIFACTORY_USERNAME = "ARTIFACTORY_USERNAME";
+    /**
+     * Standard Gitea Actions variable name for the deployer password.
+     */
+    public static final String ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD = "ARTIFACTORY_PASSWORD";
+
     private final GenericContainer<?> container;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private boolean loggingEnabled = false;
-    
+
     private String adminUsername = "admin";
     private String adminPassword = "password"; // Default Artifactory OSS password
     private String deployerUsername = "ci-deployer";
@@ -50,7 +70,7 @@ public class ArtifactoryContainer {
     private String deployerEmail = "ci-deployer@example.com";
     private String mavenRepoName = "libs-release-local";
     private String networkAlias = "artifactory";
-    
+
     /**
      * Create a new Artifactory test harness with default users and repository names.
      */
@@ -89,7 +109,7 @@ public class ArtifactoryContainer {
         this.loggingEnabled = true;
         return this;
     }
-    
+
     /**
      * Configure the admin user credentials
      *
@@ -102,7 +122,7 @@ public class ArtifactoryContainer {
         this.adminPassword = password;
         return this;
     }
-    
+
     /**
      * Configure the CI deployer user
      *
@@ -117,7 +137,7 @@ public class ArtifactoryContainer {
         this.deployerEmail = email;
         return this;
     }
-    
+
     /**
      * Configure the Maven repository name
      *
@@ -167,12 +187,12 @@ public class ArtifactoryContainer {
 
         // Detect correct admin password
         detectAdminPassword();
-        
+
         // Initialize repositories and users
         createMavenRepository();
         createDeployerUser();
         createDeployerPermissions();
-        
+
         logger.info("Artifactory container started successfully at: {}", getWebUrl());
         logger.info("Admin user: {} / {}", adminUsername, maskSecret(adminPassword));
         logger.info("Deployer user: {} / {}", deployerUsername, maskSecret(deployerPassword));
@@ -200,7 +220,7 @@ public class ArtifactoryContainer {
             container.stop();
         }
     }
-    
+
     /**
      * Get the web URL for accessing Artifactory UI
      *
@@ -209,7 +229,7 @@ public class ArtifactoryContainer {
     public String getWebUrl() {
         return "http://" + resolveHost() + ":" + container.getMappedPort(ARTIFACTORY_PORT);
     }
-    
+
     /**
      * Get the API URL for Artifactory API calls
      *
@@ -236,7 +256,7 @@ public class ArtifactoryContainer {
     public String getRunnerAccessibleApiUrl() {
         return "http://host.testcontainers.internal:" + container.getMappedPort(ARTIFACTORY_PORT) + "/artifactory";
     }
-    
+
     /**
      * Get the Maven repository URL for deployment
      *
@@ -245,7 +265,7 @@ public class ArtifactoryContainer {
     public String getMavenRepositoryUrl() {
         return getApiUrl() + "/" + mavenRepoName;
     }
-    
+
     /**
      * Get the admin username
      *
@@ -254,7 +274,7 @@ public class ArtifactoryContainer {
     public String getAdminUsername() {
         return adminUsername;
     }
-    
+
     /**
      * Get the admin password
      *
@@ -263,7 +283,7 @@ public class ArtifactoryContainer {
     public String getAdminPassword() {
         return adminPassword;
     }
-    
+
     /**
      * Get the deployer username
      *
@@ -272,7 +292,7 @@ public class ArtifactoryContainer {
     public String getDeployerUsername() {
         return deployerUsername;
     }
-    
+
     /**
      * Get the deployer password
      *
@@ -297,7 +317,7 @@ public class ArtifactoryContainer {
     public String getMavenRepositoryName() {
         return mavenRepoName;
     }
-    
+
     /**
      * Get Basic Auth header for deployer user
      *
@@ -307,7 +327,52 @@ public class ArtifactoryContainer {
         String credentials = deployerUsername + ":" + deployerPassword;
         return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
     }
-    
+
+    /**
+     * Return the standard workflow-facing Artifactory contract for Actions-based builds.
+     * <p>
+     * The returned map is a fresh mutable copy so callers can override any default before
+     * applying it to a repository.
+     *
+     * @return default Actions variable map
+     */
+    public Map<String, String> standardActionsVariables() {
+        Map<String, String> variables = new LinkedHashMap<>();
+        variables.put(ACTIONS_VARIABLE_ARTIFACTORY_URL, getRunnerAccessibleApiUrl());
+        variables.put(ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY, getMavenRepositoryName());
+        variables.put(ACTIONS_VARIABLE_ARTIFACTORY_USERNAME, getDeployerUsername());
+        variables.put(ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD, getDeployerPassword());
+        return variables;
+    }
+
+    /**
+     * Apply the default Artifactory Actions variable contract to a Gitea repository.
+     *
+     * @param gitea configured Gitea harness
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     */
+    public void configureRepositoryActionsVariables(GiteaContainer gitea, String repoOwner, String repoName) {
+        configureRepositoryActionsVariables(gitea, repoOwner, repoName, standardActionsVariables());
+    }
+
+    /**
+     * Apply the provided Artifactory Actions variable map to a Gitea repository.
+     *
+     * @param gitea configured Gitea harness
+     * @param repoOwner repository owner
+     * @param repoName repository name
+     * @param variables variable map to create or update
+     */
+    public void configureRepositoryActionsVariables(GiteaContainer gitea,
+                                                    String repoOwner,
+                                                    String repoName,
+                                                    Map<String, String> variables) {
+        Objects.requireNonNull(gitea, "gitea must not be null");
+        Objects.requireNonNull(variables, "variables must not be null");
+        variables.forEach((key, value) -> gitea.ensureRepositoryActionsVariable(repoOwner, repoName, key, value));
+    }
+
     /**
      * Check if a repository exists
      *

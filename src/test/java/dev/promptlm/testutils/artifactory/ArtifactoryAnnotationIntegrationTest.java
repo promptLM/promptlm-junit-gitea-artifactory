@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -39,10 +40,24 @@ class ArtifactoryAnnotationIntegrationTest {
         String repositoryUrl = System.getProperty("artifactory.maven.repository.url");
         String deployerUser = System.getProperty("artifactory.deployer.username");
         String deployerPassword = System.getProperty("artifactory.deployer.password");
+        Map<String, String> actionsVariables = artifactory.standardActionsVariables();
 
         assertThat(repositoryUrl).isNotBlank();
         assertThat(deployerUser).isNotBlank();
         assertThat(deployerPassword).isNotBlank();
+        assertThat(actionsVariables)
+                .containsEntry(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_URL, artifactory.getRunnerAccessibleApiUrl())
+                .containsEntry(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY, artifactory.getMavenRepositoryName())
+                .containsEntry(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_USERNAME, deployerUser)
+                .containsEntry(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD, deployerPassword);
+        assertThat(System.getProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_URL))
+                .isEqualTo(artifactory.getRunnerAccessibleApiUrl());
+        assertThat(System.getProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY))
+                .isEqualTo(artifactory.getMavenRepositoryName());
+        assertThat(System.getProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_USERNAME))
+                .isEqualTo(deployerUser);
+        assertThat(System.getProperty(ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD))
+                .isEqualTo(deployerPassword);
 
         // Artifactory should report healthy via REST API when using admin credentials
         HttpResponse<String> pingResponse = httpClient.send(
@@ -98,10 +113,10 @@ class ArtifactoryAnnotationIntegrationTest {
         assertThat(getResponse.statusCode()).isEqualTo(200);
         assertThat(getResponse.body()).contains(dummyJarContent);
 
-        // Ensure legacy properties are also populated for backward compatibility
-        assertThat(System.getProperty("REPO_REMOTE_URL")).isEqualTo(repositoryUrl);
-        assertThat(System.getProperty("REPO_REMOTE_USERNAME")).isEqualTo(deployerUser);
-        assertThat(System.getProperty("REPO_REMOTE_TOKEN")).isEqualTo(deployerPassword);
+        // Artifactory should no longer publish unrelated repo-remote properties
+        assertThat(System.getProperty("REPO_REMOTE_URL")).isNull();
+        assertThat(System.getProperty("REPO_REMOTE_USERNAME")).isNull();
+        assertThat(System.getProperty("REPO_REMOTE_TOKEN")).isNull();
 
         // Deployer credentials must authenticate against REST API as well
         HttpResponse<String> deployerPing = httpClient.send(

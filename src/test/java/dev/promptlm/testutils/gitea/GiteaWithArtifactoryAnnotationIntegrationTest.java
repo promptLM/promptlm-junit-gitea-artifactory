@@ -21,4 +21,27 @@ class GiteaWithArtifactoryAnnotationIntegrationTest {
         assertThat(artifactory.getApiUrl()).isNotBlank();
         assertThat(System.getProperty("artifactory.url")).isEqualTo(artifactory.getApiUrl());
     }
+
+    @Test
+    @DisplayName("Artifactory should configure the standard Actions variable contract in Gitea")
+    void shouldConfigureRepositoryActionsVariables(GiteaContainer gitea, ArtifactoryContainer artifactory) {
+        String repoOwner = gitea.getAdminUsername();
+        String repoName = "integration-repo";
+
+        gitea.waitForRepository(repoName);
+        artifactory.configureRepositoryActionsVariables(gitea, repoOwner, repoName);
+
+        assertThat(gitea.readRepositoryActionsVariable(repoOwner, repoName,
+                ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_URL))
+                .isEqualTo(artifactory.getRunnerAccessibleApiUrl());
+        assertThat(gitea.readRepositoryActionsVariable(repoOwner, repoName,
+                ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_REPOSITORY))
+                .isEqualTo(artifactory.getMavenRepositoryName());
+        assertThat(gitea.readRepositoryActionsVariable(repoOwner, repoName,
+                ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_USERNAME))
+                .isEqualTo(artifactory.getDeployerUsername());
+        assertThat(gitea.readRepositoryActionsVariable(repoOwner, repoName,
+                ArtifactoryContainer.ACTIONS_VARIABLE_ARTIFACTORY_PASSWORD))
+                .isEqualTo(artifactory.getDeployerPassword());
+    }
 }
