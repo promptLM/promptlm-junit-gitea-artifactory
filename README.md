@@ -115,6 +115,20 @@ var report = actions.waitForWorkflowRunBySha("owner", "repo", "commitSha",
         Duration.ofMinutes(2), Duration.ofSeconds(2));
 ```
 
+Enable Actions from the annotation and optionally choose the runner image per test class:
+
+```java
+@WithGitea(
+        actionsEnabled = true,
+        runnerImage = "docker.io/gitea/act_runner:0.2.11",
+        createTestRepos = true,
+        testRepoNames = {"demo"})
+class ActionsIntegrationTest {
+}
+```
+
+If `runnerImage` is omitted or blank, the default runner image is used.
+
 When Actions workflows time out, the container can collect diagnostics (runs, jobs, logs)
 to aid troubleshooting.
 

@@ -48,6 +48,7 @@ class GiteaTestExtensionUnitTest {
         try (MockedConstruction<GiteaContainer> construction = mockConstruction(GiteaContainer.class, (mock, c) -> {
             when(mock.withAdminUser(anyString(), anyString(), anyString())).thenReturn(mock);
             when(mock.withActionsEnabled(anyBoolean())).thenReturn(mock);
+            when(mock.withRunnerImage(anyString())).thenReturn(mock);
             when(mock.getApiUrl()).thenReturn("http://localhost:39999/api/v1");
             when(mock.getAdminUsername()).thenReturn("testuser");
             when(mock.getAdminToken()).thenReturn("token-123");
@@ -78,6 +79,7 @@ class GiteaTestExtensionUnitTest {
         try (MockedConstruction<GiteaContainer> construction = mockConstruction(GiteaContainer.class, (mock, c) -> {
             when(mock.withAdminUser(anyString(), anyString(), anyString())).thenReturn(mock);
             when(mock.withActionsEnabled(anyBoolean())).thenReturn(mock);
+            when(mock.withRunnerImage(anyString())).thenReturn(mock);
             when(mock.getApiUrl()).thenReturn("http://localhost:39999/api/v1");
             when(mock.getAdminUsername()).thenReturn("alias-user");
             when(mock.getAdminToken()).thenReturn("token-123");
@@ -123,10 +125,33 @@ class GiteaTestExtensionUnitTest {
         try (MockedConstruction<GiteaContainer> construction = mockConstruction(GiteaContainer.class, (mock, c) -> {
             when(mock.withAdminUser(anyString(), anyString(), anyString())).thenReturn(mock);
             when(mock.withActionsEnabled(anyBoolean())).thenReturn(mock);
+            when(mock.withRunnerImage(anyString())).thenReturn(mock);
             org.mockito.Mockito.doThrow(new IllegalStateException("docker unavailable")).when(mock).start();
         })) {
             assertThatThrownBy(() -> extension.beforeAll(context)).isInstanceOf(TestAbortedException.class);
             verify(store, never()).put(eq(containerKey(AnnotatedDefaultTest.class)), any());
+        }
+    }
+
+    @Test
+    void forwardsRunnerImageFromAnnotation() {
+        ExtensionContext context = extensionContextFor(AnnotatedWithRunnerImageTest.class);
+        ExtensionContext.Store store = mock(ExtensionContext.Store.class);
+        when(context.getStore(any())).thenReturn(store);
+
+        try (MockedConstruction<GiteaContainer> construction = mockConstruction(GiteaContainer.class, (mock, c) -> {
+            when(mock.withAdminUser(anyString(), anyString(), anyString())).thenReturn(mock);
+            when(mock.withActionsEnabled(anyBoolean())).thenReturn(mock);
+            when(mock.withRunnerImage(anyString())).thenReturn(mock);
+            when(mock.getApiUrl()).thenReturn("http://localhost:39999/api/v1");
+            when(mock.getAdminUsername()).thenReturn("testuser");
+            when(mock.getAdminToken()).thenReturn("token-123");
+            when(mock.getWebUrl()).thenReturn("http://localhost:39999");
+        })) {
+            extension.beforeAll(context);
+
+            GiteaContainer container = construction.constructed().get(0);
+            verify(container).withRunnerImage(eq("docker.io/gitea/act_runner:0.2.11"));
         }
     }
 
@@ -230,6 +255,10 @@ class GiteaTestExtensionUnitTest {
 
     @WithGitea(username = "alias-user", password = "alias-pass", adminEmail = "alias@example.com")
     static class AnnotatedWithAliasCredentialsTest {
+    }
+
+    @WithGitea(actionsEnabled = true, runnerImage = "docker.io/gitea/act_runner:0.2.11")
+    static class AnnotatedWithRunnerImageTest {
     }
 
     @WithGitea

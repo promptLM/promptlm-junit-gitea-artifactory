@@ -55,8 +55,7 @@ public class GiteaContainer {
     private static final String GITEA_IMAGE = resolveImage("gitea.image", "GITEA_IMAGE",
             "docker.gitea.com/gitea:1.25.4-rootless");
     private static final int GITEA_PORT = 3000;
-    private static final String GITEA_RUNNER_IMAGE = resolveImage("gitea.runner.image", "GITEA_RUNNER_IMAGE",
-            "docker.io/gitea/act_runner:0.2.11");
+    private static final String DEFAULT_GITEA_RUNNER_IMAGE = "docker.io/gitea/act_runner:0.2.11";
     private static final String RUNNER_NAME = "gitea-runner";
     private static final String DOCKER_IMAGE_LABEL = resolveImage("gitea.actions.job.image", "GITEA_ACTIONS_JOB_IMAGE",
             "docker://ghcr.io/catthehacker/ubuntu:act-22.04");
@@ -103,6 +102,7 @@ public class GiteaContainer {
     private String adminEmail = "test@example.com";
     private String adminToken;
     private boolean actionsEnabled;
+    private String runnerImage = DEFAULT_GITEA_RUNNER_IMAGE;
     private String runnerRegistrationToken;
     private final String traceId = UUID.randomUUID().toString();
     private final GiteaApiClient apiClient;
@@ -459,6 +459,19 @@ public class GiteaContainer {
         return this;
     }
 
+    /**
+     * Configure the Docker image used for the Actions runner.
+     * <p>
+     * Must be called before {@link #start()}.
+     *
+     * @param image Docker image reference, for example {@code docker.io/gitea/act_runner:0.2.11}
+     * @return this container instance
+     */
+    public GiteaContainer withRunnerImage(String image) {
+        this.runnerImage = isBlank(image) ? DEFAULT_GITEA_RUNNER_IMAGE : image.trim();
+        return this;
+    }
+
     private String buildInternalInstanceUrl() {
         return "http://" + RUNNER_ACCESSIBLE_HOST + ":" + fixedHttpPort;
     }
@@ -616,7 +629,7 @@ public class GiteaContainer {
 
             writeRunnerConfig(RUNNER_NAME);
 
-            this.runner = new GenericContainer<>(DockerImageName.parse(GITEA_RUNNER_IMAGE))
+            this.runner = new GenericContainer<>(DockerImageName.parse(runnerImage))
                     .withEnv("CONFIG_FILE", "/data/config.yaml")
                     .withEnv("GITEA_INSTANCE_URL", buildInternalInstanceUrl())
                     .withEnv("GITEA_RUNNER_REGISTRATION_TOKEN", token)
