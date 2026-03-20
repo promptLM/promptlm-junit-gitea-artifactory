@@ -97,7 +97,8 @@ class GiteaTestExtension implements BeforeAllCallback, AfterAllCallback, Paramet
 
         GiteaContainer giteaContainer = new GiteaContainer()
                 .withAdminUser(adminUsername, adminPassword, adminEmail)
-                .withActionsEnabled(annotation.actionsEnabled());
+                .withActionsEnabled(annotation.actionsEnabled())
+                .withRunnerImage(annotation.runnerImage());
 
         try {
             giteaContainer.start();

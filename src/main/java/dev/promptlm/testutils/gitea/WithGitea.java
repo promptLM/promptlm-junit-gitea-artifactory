@@ -88,4 +88,13 @@ public @interface WithGitea {
      * @return {@code true} to start the Actions runner
      */
     boolean actionsEnabled() default false;
+
+    /**
+     * Docker image to use for the Actions runner.
+     * <p>
+     * Only applied when {@link #actionsEnabled()} is {@code true}. Leave blank to use the default image.
+     *
+     * @return Actions runner image reference
+     */
+    String runnerImage() default "";
 }
