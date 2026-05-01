@@ -48,8 +48,8 @@
         <awaitility.version>4.3.0</awaitility.version>
         <slf4j.version>2.0.17</slf4j.version>
         <jackson.annotations.version>2.21</jackson.annotations.version>
-        <jackson.core.version>2.21.1</jackson.core.version>
-        <jackson.databind.version>2.21.2</jackson.databind.version>
+        <jackson.core.version>2.21.2</jackson.core.version>
+        <jackson.databind.version>2.21.1</jackson.databind.version>
         <mockito.version>5.23.0</mockito.version>
         <bytebuddy.version>1.18.7</bytebuddy.version>
         <zstd.version>1.5.7-7</zstd.version>
