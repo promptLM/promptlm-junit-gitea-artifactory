@@ -1,5 +1,6 @@
 package dev.promptlm.testutils.gitea;
 
+import dev.promptlm.testutils.docker.DockerAvailableExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.lang.annotation.ElementType;
@@ -30,7 +31,10 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@ExtendWith(GiteaTestExtension.class)
+// DockerAvailableExtension first: pings Docker with a 5s cap and skips the
+// test class with an actionable remediation hint if the daemon is unreachable,
+// instead of timing out ~4 minutes into GiteaTestExtension's container init.
+@ExtendWith({DockerAvailableExtension.class, GiteaTestExtension.class})
 public @interface WithGitea {
 
     /**

@@ -1,5 +1,6 @@
 package dev.promptlm.testutils.artifactory;
 
+import dev.promptlm.testutils.docker.DockerAvailableExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.lang.annotation.ElementType;
@@ -22,7 +23,10 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@ExtendWith(ArtifactoryTestExtension.class)
+// DockerAvailableExtension first: pings Docker with a 5s cap and skips the
+// test class with an actionable remediation hint if the daemon is unreachable,
+// instead of timing out deep inside ArtifactoryContainer.start().
+@ExtendWith({DockerAvailableExtension.class, ArtifactoryTestExtension.class})
 public @interface WithArtifactory {
     
     /**
