@@ -197,6 +197,44 @@ class GiteaActionsDiagnosticsSummaryTest {
     }
 
     @Test
+    void preservesShaWhenExactlyAtTheBoundaryLength() {
+        // Boundary case for shortSha(): a SHA of exactly SUMMARY_SHA_PREFIX_LEN characters
+        // must be returned in full (not truncated and not padded). One shorter and one longer
+        // are already exercised by other tests; this pins the equality branch.
+        String boundary = "a".repeat(GiteaActionsDiagnostics.SUMMARY_SHA_PREFIX_LEN);
+        GiteaActions.ActionRunSummary run = new GiteaActions.ActionRunSummary(
+                1L,
+                "build",
+                "queued",
+                null,
+                "main",
+                boundary,
+                "push",
+                null,
+                Instant.parse("2026-01-01T10:00:00Z"),
+                Instant.parse("2026-01-01T10:00:00Z"));
+        GiteaActionsDiagnostics diagnostics = new GiteaActionsDiagnostics(
+                "trace-boundary",
+                "owner",
+                "repo",
+                Instant.parse("2026-01-01T10:00:00Z"),
+                List.of(),
+                List.of(),
+                List.of(run),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                null,
+                null,
+                List.of());
+
+        String summary = diagnostics.summary();
+
+        assertThat(summary).contains("sha=" + boundary + " ");
+    }
+
+    @Test
     void truncatesLongNames() {
         String longName = "x".repeat(500);
         GiteaActions.ActionRunSummary run = new GiteaActions.ActionRunSummary(
