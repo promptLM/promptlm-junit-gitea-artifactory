@@ -1,0 +1,28 @@
+name: oss-checks
+
+# Thin caller of the org-wide reusable workflow at
+# promptLM/.github/.github/workflows/oss-checks.yml.
+#
+# License-header check is OFF for now: 47 of 48 .java files in this repo
+# pre-date the org-wide Apache-2.0 header policy and would fail license-eye
+# immediately. Run `license-eye -c .licenserc.yaml header fix` once locally,
+# commit the result, then flip `check-license-headers: true` here.
+#
+# Gitleaks runs without a per-repo .gitleaks.toml (the reusable warns and
+# falls back to default rules). Add a .gitleaks.toml at the repo root to
+# tune the allowlist if CI noise emerges.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: promptLM/.github/.github/workflows/oss-checks.yml@main
+    with:
+      check-license-headers: false
