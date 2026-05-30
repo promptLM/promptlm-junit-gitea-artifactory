@@ -11,6 +11,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -77,6 +78,68 @@ class GiteaActionsTest {
                 Duration.ofMillis(50)))
                 .isInstanceOf(GiteaWorkflowException.class)
                 .hasMessageContaining("Timed out waiting for workflow run");
+    }
+
+    @Test
+    void timeoutMessageIncludesDiagnosticsSummaryAndExposesFullDiagnostics() {
+        // Verifies the AC-1/AC-2 contract: when a diagnostics collector is wired and a wait
+        // times out, the exception's getMessage() includes the redacted summary AND the
+        // structured diagnostics payload remains available via getDiagnostics().
+        GiteaActions actions = buildActionsClientWithRuns("{\"workflow_runs\": []}");
+        GiteaActions.ActionRunSummary run = new GiteaActions.ActionRunSummary(
+                42L,
+                "Deploy",
+                "queued",
+                null,
+                "main",
+                "abcdef1234567890",
+                "push",
+                "http://gitea/run/42",
+                Instant.parse("2026-01-01T10:00:00Z"),
+                Instant.parse("2026-01-01T10:05:00Z"));
+        GiteaActionsDiagnostics diagnostics = new GiteaActionsDiagnostics(
+                "trace-abc",
+                "owner",
+                "repo",
+                Instant.parse("2026-01-01T10:05:00Z"),
+                List.of("deploy.yml"),
+                List.of(),
+                List.of(run),
+                Map.of(42L, List.of()),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                "runner stdout: GITEA_RUNNER_REGISTRATION_TOKEN=must-not-leak",
+                "gitea logs: Authorization: token must-not-leak",
+                List.of());
+        GiteaActionsDiagnosticsCollector collector = mock(GiteaActionsDiagnosticsCollector.class);
+        when(collector.collect(any(), any(), any())).thenReturn(diagnostics);
+        actions.setDiagnosticsCollector(collector);
+
+        try {
+            actions.waitForWorkflowRunBySha(
+                    "owner",
+                    "repo",
+                    "abcd",
+                    Duration.ofMillis(200),
+                    Duration.ofMillis(50));
+        } catch (GiteaWorkflowException e) {
+            // AC-1: enriched message includes the summary.
+            assertThat(e.getMessage())
+                    .startsWith("Timed out waiting for workflow run") // preserve original prefix
+                    .contains("trace=trace-abc")
+                    .contains("run: id=42")
+                    .contains("status=queued")
+                    .contains("sha=abcdef12");
+            // Redaction discipline: the raw log fields must NOT leak into the message.
+            assertThat(e.getMessage())
+                    .as("raw runner/gitea log bodies must not leak through summary")
+                    .doesNotContain("must-not-leak");
+            // AC-2: structured payload remains available via getDiagnostics().
+            assertThat(e.getDiagnostics()).isSameAs(diagnostics);
+            return;
+        }
+        throw new AssertionError("expected GiteaWorkflowException");
     }
 
     @Test
