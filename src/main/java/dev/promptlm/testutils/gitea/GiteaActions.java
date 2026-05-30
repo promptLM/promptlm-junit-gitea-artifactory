@@ -157,8 +157,12 @@ public final class GiteaActions {
                     .until(() -> findTerminalRun(repoOwner, repoName, normalizedSha), Objects::nonNull);
         } catch (ConditionTimeoutException e) {
             GiteaActionsDiagnostics diagnostics = collectDiagnostics(repoOwner, repoName);
-            throw new GiteaWorkflowException("Timed out waiting for workflow run for " + repoOwner + "/" + repoName
-                    + " sha=" + normalizedSha, e, diagnostics);
+            String baseMessage = "Timed out waiting for workflow run for " + repoOwner + "/" + repoName
+                    + " sha=" + normalizedSha;
+            String message = diagnostics == null
+                    ? baseMessage
+                    : baseMessage + System.lineSeparator() + diagnostics.summary();
+            throw new GiteaWorkflowException(message, e, diagnostics);
         }
     }
 
