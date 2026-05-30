@@ -485,7 +485,6 @@ public class GiteaContainer {
         }
 
         logGiteaActionsConfig();
-        logGiteaActionsDatabaseState();
 
         try {
             boolean registered = runnerRegistry.isRunnerRegistered(RUNNER_NAME);
@@ -545,52 +544,6 @@ public class GiteaContainer {
             }
         } catch (Exception e) {
             logger.warn("Failed to read Gitea actions config", e);
-        }
-    }
-
-    private void logGiteaActionsDatabaseState() {
-        try {
-            var sqliteCheck = container.execInContainer("sh", "-lc", "command -v sqlite3 >/dev/null 2>&1");
-            if (sqliteCheck.getExitCode() != 0) {
-                logger.warn("sqlite3 is not installed in the Gitea image; skipping Actions database diagnostics");
-                return;
-            }
-
-            var tables = container.execInContainer(
-                    "sqlite3",
-                    "/var/lib/gitea/data/gitea.db",
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'action_%' ORDER BY name;");
-            String tableList = tables.getStdout().trim();
-            if (!tableList.isBlank()) {
-                logger.warn("Gitea action tables: {}", tableList.replace("\n", ", "));
-            } else if (!tables.getStderr().isBlank()) {
-                logger.warn("Gitea action table discovery stderr: {}", tables.getStderr().trim());
-            } else {
-                logger.warn("No action_* tables found in Gitea database");
-            }
-
-            logGiteaActionsTableCount("action_run");
-            logGiteaActionsTableCount("action_task");
-            logGiteaActionsTableCount("action_runner");
-        } catch (Exception e) {
-            logger.warn("Failed to inspect Gitea actions database", e);
-        }
-    }
-
-    private void logGiteaActionsTableCount(String table) {
-        try {
-            var result = container.execInContainer(
-                    "sqlite3",
-                    "/var/lib/gitea/data/gitea.db",
-                    "SELECT COUNT(1) FROM " + table + ";");
-            String output = result.getStdout().trim();
-            if (!output.isBlank()) {
-                logger.warn("Gitea {} row count: {}", table, output);
-            } else if (!result.getStderr().isBlank()) {
-                logger.warn("Gitea {} count stderr: {}", table, result.getStderr().trim());
-            }
-        } catch (Exception e) {
-            logger.warn("Failed to count Gitea table {}", table, e);
         }
     }
 
