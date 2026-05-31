@@ -11,3 +11,10 @@
 # OS/files
 .DS_Store
 *.log
+
+# Claude Code agent state and scratch artifacts.
+# Issue-delivery artefacts (.claude/issue-delivery/) are local-only by default
+# per .claude/commands/github-issue-delivery/PROCEDURE.md — the PR description
+# is the durable record. Repos that want the audit trail committed should
+# remove or scope this rule.
+/.claude/
