@@ -47,7 +47,7 @@ public final class DockerAvailableExtension implements BeforeAllCallback {
 
     private static final Logger log = LoggerFactory.getLogger(DockerAvailableExtension.class);
 
-    private static final long PING_TIMEOUT_SECONDS = 5;
+    static final long DEFAULT_PING_TIMEOUT_SECONDS = 5;
 
     private static final String REMEDIATION_HINT = """
             Docker is not reachable from this JVM. Tests using @WithGitea / @WithArtifactory \
@@ -63,18 +63,37 @@ public final class DockerAvailableExtension implements BeforeAllCallback {
             Then re-run the test.
             Cause: %s""";
 
+    private final Runnable pingAction;
+    private final long pingTimeoutSeconds;
+
+    /** Production constructor used by JUnit when wired via {@code @ExtendWith}. */
+    public DockerAvailableExtension() {
+        this(() -> DockerClientFactory.instance().client().pingCmd().exec(),
+                DEFAULT_PING_TIMEOUT_SECONDS);
+    }
+
+    /**
+     * Test seam — lets unit tests inject a failing or sleeping ping action and a short timeout
+     * so the skip path can be exercised without a real Docker daemon and without cross-thread
+     * static mocking. Package-private on purpose; consumers should use the no-arg constructor
+     * via {@code @ExtendWith}.
+     */
+    DockerAvailableExtension(Runnable pingAction, long pingTimeoutSeconds) {
+        this.pingAction = pingAction;
+        this.pingTimeoutSeconds = pingTimeoutSeconds;
+    }
+
     @Override
     public void beforeAll(ExtensionContext context) {
-        CompletableFuture<Void> ping = CompletableFuture.runAsync(() ->
-                DockerClientFactory.instance().client().pingCmd().exec());
+        CompletableFuture<Void> ping = CompletableFuture.runAsync(pingAction);
         try {
-            ping.get(PING_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            ping.get(pingTimeoutSeconds, TimeUnit.SECONDS);
             log.debug("Docker daemon reachable; proceeding with Testcontainers-backed test {}",
                     context.getDisplayName());
         }
         catch (TimeoutException ex) {
             ping.cancel(true);
-            skip("ping timed out after " + PING_TIMEOUT_SECONDS + "s");
+            skip("ping timed out after " + pingTimeoutSeconds + "s");
         }
         catch (ExecutionException ex) {
             Throwable cause = ex.getCause() != null ? ex.getCause() : ex;

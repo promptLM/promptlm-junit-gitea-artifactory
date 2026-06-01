@@ -19,6 +19,22 @@ PromptLM Gitea + Artifactory Test Support is a JUnit 5 library that provisions G
 - Java 17+
 - Docker (required by Testcontainers)
 
+### When Docker is unreachable
+
+Tests annotated with `@WithGitea` or `@WithArtifactory` are guarded by a
+fail-fast Docker-availability precondition. If the Docker daemon does not
+respond within 5 seconds, the test class is **skipped** (not failed) with an
+actionable remediation hint — no more 4-minute Testcontainers timeouts with
+confusing stack traces. The most common cause on macOS is a broken
+`/var/run/docker.sock` symlink after a Docker Desktop reinstall, fixed with:
+
+```sh
+sudo ln -sf "$HOME/.docker/run/docker.sock" /var/run/docker.sock
+```
+
+The precondition is wired automatically — consumers do not need to add
+`@ExtendWith(DockerAvailableExtension.class)` to their own test classes.
+
 ## Dependency
 
 ```xml
