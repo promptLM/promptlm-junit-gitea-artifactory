@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "maven",
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
+  "draft": false,
+  "prerelease": false,
+  "packages": {
+    ".": {
+      "package-name": "promptlm-junit-gitea-artifactory",
+      "changelog-sections": [
+        { "type": "feat",     "section": "Added" },
+        { "type": "fix",      "section": "Fixed" },
+        { "type": "perf",     "section": "Performance" },
+        { "type": "refactor", "section": "Changed" },
+        { "type": "revert",   "section": "Reverted" },
+        { "type": "build",    "section": "Dependencies" },
+        { "type": "deps",     "section": "Dependencies" },
+        { "type": "ci",       "section": "CI" },
+        { "type": "test",     "section": "Tests" },
+        { "type": "docs",     "section": "Documentation" },
+        { "type": "style",    "hidden": true },
+        { "type": "chore",    "hidden": true }
+      ]
+    }
+  }
+}
