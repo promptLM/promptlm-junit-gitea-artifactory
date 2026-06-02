@@ -35,12 +35,15 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  publish:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
-    uses: promptLM/.github/.github/workflows/release-java-central.yml@main
-    with:
-      version: ${{ needs.release-please.outputs.tag_name }}
-      java-version: '21'
-      environment: maven-central-publish
-    secrets: inherit
+  # publish:
+  #   needs: release-please
+  #   if: needs.release-please.outputs.release_created == 'true'
+  #   uses: promptLM/.github/.github/workflows/release-java-central.yml@main
+  #   with:
+  #     version: ${{ needs.release-please.outputs.tag_name }}
+  #     java-version: '21'
+  #     environment: maven-central-publish
+  #   secrets: inherit
+  #
+  # Temporarily disabled to isolate a startup_failure cause. Will be re-enabled
+  # once the cause is understood.
