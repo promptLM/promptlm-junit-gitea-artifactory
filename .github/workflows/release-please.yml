@@ -1,0 +1,46 @@
+name: release-please
+
+# Single dispatcher: release-please opens/updates a rolling "release PR" that
+# bumps pom.xml and rewrites CHANGELOG.md from Conventional Commits. Merging
+# the PR tags vX.Y.Z, which gates the publish job below — which delegates to
+# the org-wide reusable release-java-central workflow.
+#
+# Replaces: prepare-release.yml, tag-release.yml, and the inline build/sign/
+# deploy/promote/release-notes jobs currently in release.yml.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name:        ${{ steps.release.outputs.tag_name }}
+      version:         ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@a02a34c4d625f9be7cb89156071d8567266a2445 # v4.1.3
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: promptLM/.github/.github/workflows/release-java-central.yml@main
+    with:
+      version: ${{ needs.release-please.outputs.tag_name }}
+      java-version: '21'
+      environment: maven-central-publish
+    secrets: inherit

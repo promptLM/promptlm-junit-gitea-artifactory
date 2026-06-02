@@ -1,0 +1,44 @@
+name: pr-title
+
+# Prevention guard for the release-please pipeline: every PR title must follow
+# Conventional Commits, because the squash-merge UI defaults to using the PR
+# title as the commit message that release-please reads. Without this check,
+# untyped merges silently drop out of the auto-generated CHANGELOG (as four
+# pre-1.3.0 commits already did).
+#
+# Caveat: rebase merges preserve individual commit titles unchanged, so this
+# workflow does not cover them. Reviewers should reject rebase merges with
+# untyped commits, or we add a commit-msg linter later if it becomes a problem.
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@0723387faaf9b38adef4775cd42cfd5155ed6017 # v5.5.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            revert
+            build
+            deps
+            ci
+            test
+            docs
+            style
+            chore
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject "{subject}" must start with a lowercase letter.
