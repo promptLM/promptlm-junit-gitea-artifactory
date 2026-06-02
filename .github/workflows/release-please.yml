@@ -16,6 +16,12 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Granted at the caller level so the org reusable workflow's deploy job
+  # (release-java-central.yml) can request them on its own job. GitHub policy
+  # forbids a called workflow from holding permissions the caller hasn't
+  # authorized — omitting these manifests as a no-jobs `startup_failure`.
+  id-token: write
+  attestations: write
 
 concurrency:
   group: release-please-${{ github.ref }}
@@ -35,15 +41,12 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  # publish:
-  #   needs: release-please
-  #   if: needs.release-please.outputs.release_created == 'true'
-  #   uses: promptLM/.github/.github/workflows/release-java-central.yml@main
-  #   with:
-  #     version: ${{ needs.release-please.outputs.tag_name }}
-  #     java-version: '21'
-  #     environment: maven-central-publish
-  #   secrets: inherit
-  #
-  # Temporarily disabled to isolate a startup_failure cause. Will be re-enabled
-  # once the cause is understood.
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: promptLM/.github/.github/workflows/release-java-central.yml@main
+    with:
+      version: ${{ needs.release-please.outputs.tag_name }}
+      java-version: '21'
+      environment: maven-central-publish
+    secrets: inherit
