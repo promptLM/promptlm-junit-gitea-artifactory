@@ -10,6 +10,7 @@
   "packages": {
     ".": {
       "package-name": "promptlm-junit-gitea-artifactory",
+      "skip-snapshot": true,
       "changelog-sections": [
         { "type": "feat",     "section": "Added" },
         { "type": "fix",      "section": "Fixed" },
