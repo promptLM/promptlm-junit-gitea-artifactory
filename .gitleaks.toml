@@ -1,0 +1,21 @@
+# gitleaks configuration for promptlm-junit-gitea-artifactory.
+#
+# The org-wide oss-checks workflow (promptLM/.github) runs gitleaks against
+# every PR + push to main. Without this file the scan runs with default rules
+# only and warns. With it, we extend the default rule set and pin
+# repo-specific allowlist entries here as CI noise emerges.
+#
+# Reference: https://github.com/gitleaks/gitleaks#configuration
+
+[extend]
+useDefault = true
+
+# Project-specific allowlist entries go below. Keep narrow — prefer matching
+# a specific file/path or regex rather than disabling whole rule IDs.
+#
+# Example shape (kept commented until needed):
+#
+# [[allowlist]]
+# description = "Test fixtures with synthetic tokens"
+# paths = ['''src/test/resources/.*\.json''']
+# regexes = ['''ghp_[A-Za-z0-9]{36}''']
