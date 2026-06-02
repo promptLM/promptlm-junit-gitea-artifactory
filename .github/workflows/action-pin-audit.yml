@@ -1,0 +1,19 @@
+# Audit every `uses:` ref in this repo's workflows on PRs that touch
+# them, weekly on schedule, and on demand. Org composite action lives at
+# promptLM/.github/.github/actions/audit-action-pins (see
+# https://github.com/promptLM/.github/blob/main/.github/actions/README.md).
+name: Action pin audit
+on:
+  pull_request:
+    paths: ['.github/workflows/**']
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: promptLM/.github/.github/actions/audit-action-pins@4b0d21dfddaaeb27fe555bd06057dbdcbb501cc5 # 4b0d21d
