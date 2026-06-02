@@ -1,0 +1,43 @@
+name: republish
+
+# Manual dispatcher for publishing (or re-publishing) a specific tag to
+# Maven Central. Useful when:
+#   - release-please created the release but the publish leg failed
+#     (e.g. a transient verify/deploy error, or — as for v1.3.0 — a stale
+#     reusable-workflow resolution that gh run rerun won't refresh).
+#   - we need to ship a hotfix tag created out-of-band.
+#
+# This workflow is intentionally a thin caller around the org reusable so
+# the rerun semantics and approval gates are identical to the normal flow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag to publish (e.g. v1.3.0). The leading v is stripped by the reusable.'
+        required: true
+        type: string
+      dry-run:
+        description: 'Build and sign but do not deploy or promote'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: republish-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    uses: promptLM/.github/.github/workflows/release-java-central.yml@main
+    with:
+      version: ${{ inputs.version }}
+      dry-run: ${{ inputs.dry-run }}
+      java-version: '21'
+      environment: maven-central-publish
+    secrets: inherit
