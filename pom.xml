@@ -51,7 +51,7 @@
         <jackson.core.version>2.22.2</jackson.core.version>
         <jackson.databind.version>2.22.2</jackson.databind.version>
         <mockito.version>5.23.0</mockito.version>
-        <bytebuddy.version>1.18.12</bytebuddy.version>
+        <bytebuddy.version>1.18.13</bytebuddy.version>
         <zstd.version>1.5.7-15</zstd.version>
         <maven.compiler.plugin.version>3.16.0</maven.compiler.plugin.version>
         <maven.source.plugin.version>3.4.0</maven.source.plugin.version>
